@@ -14,13 +14,21 @@
 
 set -euo pipefail
 
-REPO="bkraft904/stratum-xray-passport"
+# GitHub's OIDC "sub" claim includes the immutable numeric owner/repo IDs
+# alongside the names (repo:OWNER@OWNER_ID/REPO@REPO_ID:ref:...), not just
+# "OWNER/REPO" as most tutorials assume — confirmed by decoding an actual
+# token from this repo's workflow runs. These IDs are specific to
+# bkraft904/stratum-xray-passport.
+REPO_OWNER="bkraft904"
+REPO_OWNER_ID="312739601"
+REPO_NAME="stratum-xray-passport"
+REPO_ID="1337419750"
 ROLE_NAME="stratum-github-deploy"
 STACK_NAME="stratum-scan-lab"
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
 echo "Account: $ACCOUNT_ID"
-echo "Repo:    $REPO"
+echo "Repo:    $REPO_OWNER/$REPO_NAME"
 echo
 
 echo "1/4 — Checking for existing GitHub OIDC provider..."
@@ -49,10 +57,8 @@ TRUST_POLICY=$(cat <<EOF
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:${REPO}:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": "repo:${REPO_OWNER}@${REPO_OWNER_ID}/${REPO_NAME}@${REPO_ID}:ref:refs/heads/main"
         }
       }
     }
