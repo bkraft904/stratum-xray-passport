@@ -20,6 +20,19 @@ jobs:
 
       - uses: aws-actions/setup-sam@v2
 
+      - name: Debug OIDC token claims
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken('sts.amazonaws.com');
+            const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+            console.log('aud:', JSON.stringify(payload.aud));
+            console.log('sub:', JSON.stringify(payload.sub));
+            console.log('iss:', JSON.stringify(payload.iss));
+            console.log('repository:', JSON.stringify(payload.repository));
+            console.log('ref:', JSON.stringify(payload.ref));
+            console.log('event_name:', JSON.stringify(payload.event_name));
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
