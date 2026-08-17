@@ -20,6 +20,10 @@ route, no database. It exists to keep the Anthropic API key off the client
 
 ## Deploy
 
+Two ways to deploy — pick one.
+
+### Option A: manually, from your own machine
+
 ```bash
 cd backend
 sam build
@@ -35,6 +39,38 @@ sam deploy --guided
 - Accept the defaults for the rest (confirm changeset: Y, save arguments to `samconfig.toml`: Y)
 
 When it finishes, copy the **`ApiUrl`** output — that's your endpoint.
+
+### Option B: automatically via GitHub Actions
+
+`.github/workflows/deploy-backend.yml` redeploys this stack on every push to
+`backend/**`. It authenticates to AWS via OIDC (a short-lived token GitHub
+mints per run) rather than storing long-lived AWS access keys as a repo
+secret. One-time setup, run from anywhere you already have AWS CLI
+credentials configured:
+
+```bash
+cd backend
+./bootstrap-github-oidc.sh
+```
+
+This creates an IAM role GitHub Actions can assume, scoped to only work from
+this repo's `main` branch, with `PowerUserAccess` plus the narrow IAM
+permissions SAM needs to create the Lambda's own execution role. It prints a
+role ARN at the end.
+
+Then add two **repository secrets** (`Settings → Secrets and variables →
+Actions → New repository secret`):
+
+- `AWS_DEPLOY_ROLE_ARN` — the role ARN the script printed
+- `ANTHROPIC_API_KEY` — your Anthropic key (this is the one place it needs
+  to live for automated deploys — GitHub encrypts it and never exposes it in
+  logs, but it's still a secret worth rotating if the repo's collaborator
+  list ever changes)
+
+Optionally set a repo **variable** `AWS_REGION` if you don't want the
+default `us-east-1`. From then on, pushing changes under `backend/` (or
+running the workflow manually) redeploys automatically and prints the
+`ApiUrl` in the workflow logs.
 
 ## Wire it to the frontend
 
