@@ -33,25 +33,38 @@ export function HotspotPanel({ hotspot, onClose }: { hotspot: Hotspot | null; on
       </div>
 
       <div className="grid grid-cols-1 gap-2">
-        {hotspot.items.map((item) => (
-          <div key={item.label} className="flex items-center justify-between gap-3 border-b border-hair py-2 text-sm last:border-0">
-            <span className="text-fg-faint">{item.label}</span>
-            <span className="font-mono text-[13px] text-fg">{item.value}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-auto flex flex-wrap items-center gap-3 border-t border-hair pt-3 text-xs text-fg-dim">
-        <span className="inline-flex items-center gap-1.5">
-          <Calendar className="size-3.5 text-fg-faint" /> {hotspot.installDate}
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <ShieldCheck className="size-3.5 text-green" /> {hotspot.warranty}
-        </span>
-        {typeof hotspot.confidence === 'number' && (
-          <span className="ml-auto font-mono text-[11px] text-cyan-soft">{Math.round(hotspot.confidence * 100)}% confidence</span>
+        {hotspot.items.map((item) =>
+          item.value.length > 40 ? (
+            <div key={item.label} className="border-b border-hair py-2 text-sm last:border-0">
+              <span className="text-fg-faint">{item.label}</span>
+              <p className="mt-1 text-[13px] leading-relaxed text-fg">{item.value}</p>
+            </div>
+          ) : (
+            <div key={item.label} className="flex items-center justify-between gap-3 border-b border-hair py-2 text-sm last:border-0">
+              <span className="text-fg-faint">{item.label}</span>
+              <span className="font-mono text-[13px] text-fg">{item.value}</span>
+            </div>
+          ),
         )}
       </div>
+
+      {(hotspot.installDate || hotspot.warranty || typeof hotspot.confidence === 'number') && (
+        <div className="mt-auto flex flex-wrap items-center gap-3 border-t border-hair pt-3 text-xs text-fg-dim">
+          {hotspot.installDate && (
+            <span className="inline-flex items-center gap-1.5">
+              <Calendar className="size-3.5 text-fg-faint" /> {hotspot.installDate}
+            </span>
+          )}
+          {hotspot.warranty && (
+            <span className="inline-flex items-center gap-1.5">
+              <ShieldCheck className="size-3.5 text-green" /> {hotspot.warranty}
+            </span>
+          )}
+          {typeof hotspot.confidence === 'number' && (
+            <span className="ml-auto font-mono text-[11px] text-cyan-soft">{Math.round(hotspot.confidence * 100)}% confidence</span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

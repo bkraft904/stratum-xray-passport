@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   AlertTriangle,
@@ -24,6 +24,7 @@ import { STAGES, useScanPipeline } from '../lib/useScanPipeline'
 import { formatBytes } from '../lib/format'
 import { isImageFile, isVideoFile } from '../lib/frameExtractor'
 import { isRealAnalysisConfigured, type Finding, type FindingCategory } from '../lib/analyzeApi'
+import { buildApproximateLayout } from '../lib/floorplan'
 import type { Hotspot, Layer } from '../lib/floorplan'
 
 const CATEGORY_META: Record<FindingCategory, { label: string; color: string }> = {
@@ -77,7 +78,12 @@ export function ScanLab() {
 
   useEffect(() => {
     setSelected(null)
-  }, [result])
+  }, [result, analysis])
+
+  const approxLayout = useMemo(() => {
+    if (!analysis) return null
+    return buildApproximateLayout(analysis.findings, `${fileName}-${fileSize}`)
+  }, [analysis, fileName, fileSize])
 
   function handleFile(file: File | null) {
     if (!file) return
@@ -350,6 +356,41 @@ export function ScanLab() {
                         className="h-20 w-28 shrink-0 rounded-lg border border-hair object-cover"
                       />
                     ))}
+                  </div>
+                )}
+
+                {approxLayout && approxLayout.floorplan.hotspots.length > 0 && (
+                  <div className="mb-6">
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
+                      <div className="glass overflow-hidden rounded-2xl p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3 px-2 pb-4">
+                          <LayerToggle active={activeLayers} onChange={setActiveLayers} />
+                          <Badge tone="cyan">Approximate layout</Badge>
+                        </div>
+                        <div className="aspect-[8/6] w-full overflow-hidden rounded-xl border border-hair bg-ink">
+                          <XrayFloorplan
+                            floorplan={approxLayout.floorplan}
+                            activeLayers={activeLayers}
+                            selectedId={selected?.id ?? null}
+                            onSelect={setSelected}
+                          />
+                        </div>
+                        <p className="mt-3 px-1 text-[11.5px] leading-relaxed text-fg-faint">
+                          The outline is a generic illustration — we have no real spatial data from your upload.
+                          Each pin is one of your actual findings; positions on the outline are not measured.
+                        </p>
+                      </div>
+                      <div className="min-h-[300px]">
+                        <HotspotPanel hotspot={selected} onClose={() => setSelected(null)} />
+                      </div>
+                    </div>
+                    {approxLayout.unplaced.length > 0 && (
+                      <p className="mt-3 text-[12px] text-fg-faint">
+                        {approxLayout.unplaced.length} more finding{approxLayout.unplaced.length === 1 ? '' : 's'} (
+                        {approxLayout.unplaced.map((f) => f.label).join(', ')}) don't map to a wall layer, so they're
+                        not pinned above — see the full list below.
+                      </p>
+                    )}
                   </div>
                 )}
 

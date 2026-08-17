@@ -226,7 +226,7 @@ function pick<T>(rand: () => number, arr: T[]): T {
   return arr[Math.floor(rand() * arr.length) % arr.length]
 }
 
-function buildLayoutTemplate(rand: () => number): { rooms: Room[]; walls: WallSeg[] } {
+export function buildLayoutTemplate(rand: () => number): { rooms: Room[]; walls: WallSeg[] } {
   const templates: Room[][] = [
     [
       { x: 40, y: 40, w: 360, h: 280, label: 'Living Room' },
@@ -394,5 +394,63 @@ export function generateScan(seedInput: string): ScanResult {
       confidence: Math.round((0.9 + rand() * 0.09) * 100) / 100,
       sqft,
     },
+  }
+}
+
+// -------- Approximate layout from real AI findings --------
+// Room outline is a generic illustrative shape (we have no real spatial data
+// from a phone video/photo) — but hotspot content is the actual finding
+// returned by the vision model, not fabricated.
+
+export interface RealFinding {
+  category: Layer | 'material' | 'other'
+  label: string
+  description: string
+  evidence: string
+  confidence: 'low' | 'medium' | 'high'
+}
+
+const CONFIDENCE_SCORE: Record<RealFinding['confidence'], number> = {
+  high: 0.92,
+  medium: 0.65,
+  low: 0.4,
+}
+
+export function buildApproximateLayout(findings: RealFinding[], seedInput: string): { floorplan: FloorPlan; unplaced: RealFinding[] } {
+  const seed = seedFromString(seedInput || 'stratum')
+  const rand = mulberry32(seed)
+  const { rooms, walls } = buildLayoutTemplate(rand)
+
+  const interiorWalls = walls.filter((w) => !w.exterior)
+  const wallPool = interiorWalls.length ? [...interiorWalls, ...walls] : walls
+
+  const placeable = findings.filter((f): f is RealFinding & { category: Layer } => f.category !== 'material' && f.category !== 'other')
+  const unplaced = findings.filter((f) => f.category === 'material' || f.category === 'other')
+
+  const hotspots: Hotspot[] = placeable.map((f, i) => {
+    const w = wallPool[i % wallPool.length]
+    const t = 0.2 + rand() * 0.6
+    const x = w.x1 + (w.x2 - w.x1) * t
+    const y = w.y1 + (w.y2 - w.y1) * t
+    return {
+      id: `finding-${i}`,
+      x,
+      y,
+      layer: f.category,
+      title: f.label,
+      subtitle: 'Detected in your upload',
+      installDate: '',
+      warranty: '',
+      confidence: CONFIDENCE_SCORE[f.confidence],
+      items: [
+        { label: 'What we see', value: f.description },
+        { label: 'Evidence', value: f.evidence },
+      ],
+    }
+  })
+
+  return {
+    floorplan: { viewBox: [0, 0, 800, 560], rooms, walls, hotspots },
+    unplaced,
   }
 }
