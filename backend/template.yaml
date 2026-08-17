@@ -1,0 +1,57 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Stratum Scan Lab backend — a single Lambda function that sends uploaded
+  frames to Claude's vision API and returns real, grounded findings about
+  visible construction elements.
+
+Parameters:
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Description: Your Anthropic API key (from console.anthropic.com). Stored as a Lambda environment variable.
+  AllowedOrigin:
+    Type: String
+    Default: "https://bkraft904.github.io"
+    Description: Origin allowed to call this API (your deployed site's URL, no trailing slash).
+
+Resources:
+  ScanLabHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref AllowedOrigin
+          - "http://localhost:5173"
+        AllowMethods:
+          - POST
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+
+  AnalyzeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: analyze/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+      Events:
+        Analyze:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ScanLabHttpApi
+            Path: /analyze
+            Method: POST
+
+Outputs:
+  ApiUrl:
+    Description: Invoke URL for the analyze endpoint — set this as VITE_ANALYZE_API_URL
+    Value: !Sub "https://${ScanLabHttpApi}.execute-api.${AWS::Region}.amazonaws.com/analyze"

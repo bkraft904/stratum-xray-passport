@@ -1,7 +1,10 @@
 import { useCallback, useRef, useState } from 'react'
 import { generateScan, type ScanResult } from './floorplan'
+import { extractFramesFromVideo, imageFileToFrame, isImageFile, isVideoFile, type Frame } from './frameExtractor'
+import { analyzeFrames, isRealAnalysisConfigured, type AnalysisResult } from './analyzeApi'
 
-export type Phase = 'idle' | 'uploading' | 'processing' | 'done'
+export type Phase = 'idle' | 'uploading' | 'processing' | 'extracting' | 'analyzing' | 'done' | 'error'
+export type Mode = 'real' | 'simulated'
 
 export interface StageDef {
   key: string
@@ -69,6 +72,7 @@ function wait(ms: number, signal: { cancelled: boolean }) {
 }
 
 export function useScanPipeline() {
+  const [mode, setMode] = useState<Mode>('simulated')
   const [phase, setPhase] = useState<Phase>('idle')
   const [fileName, setFileName] = useState('')
   const [fileSize, setFileSize] = useState(0)
@@ -78,6 +82,9 @@ export function useScanPipeline() {
   const [stageProgress, setStageProgress] = useState(0)
   const [log, setLog] = useState<string[]>([])
   const [result, setResult] = useState<ScanResult | null>(null)
+  const [frames, setFrames] = useState<Frame[]>([])
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const runToken = useRef(0)
   const cancelSignal = useRef({ cancelled: false })
@@ -91,29 +98,51 @@ export function useScanPipeline() {
     setStageProgress(0)
     setLog([])
     setResult(null)
+    setFrames([])
+    setAnalysis(null)
+    setErrorMessage(null)
   }, [])
 
-  const start = useCallback(async (file: File) => {
-    cancelSignal.current.cancelled = true
-    await Promise.resolve()
-    const signal = { cancelled: false }
-    cancelSignal.current = signal
-    const token = ++runToken.current
+  const runReal = useCallback(async (file: File, signal: { cancelled: boolean }, token: number) => {
+    setPhase('extracting')
+    setLog(['Reading file…'])
+    try {
+      const extracted = isVideoFile(file)
+        ? await extractFramesFromVideo(file, 4)
+        : isImageFile(file)
+          ? [await imageFileToFrame(file)]
+          : (() => {
+              throw new Error('Unsupported file type — upload a video or an image.')
+            })()
 
-    setFileName(file.name)
-    setFileSize(file.size)
+      if (signal.cancelled || runToken.current !== token) return
+      setFrames(extracted)
+      setLog((prev) => [...prev, `Captured ${extracted.length} frame${extracted.length === 1 ? '' : 's'} for analysis.`])
+
+      setPhase('analyzing')
+      setLog((prev) => [...prev, `Sending ${extracted.length} frame${extracted.length === 1 ? '' : 's'} to Claude Opus 5…`])
+
+      const analysisResult = await analyzeFrames(extracted)
+      if (signal.cancelled || runToken.current !== token) return
+
+      setLog((prev) => [...prev, 'Received analysis.'])
+      setAnalysis(analysisResult)
+      setPhase('done')
+    } catch (err) {
+      if (signal.cancelled || runToken.current !== token) return
+      setErrorMessage(err instanceof Error ? err.message : 'Something went wrong analyzing your upload.')
+      setPhase('error')
+    }
+  }, [])
+
+  const runSimulated = useCallback(async (file: File, signal: { cancelled: boolean }, token: number) => {
     setPhase('uploading')
-    setUploadProgress(0)
-    setStageIndex(0)
-    setStageProgress(0)
-    setLog([])
-    setResult(null)
 
     const CHUNK = 4 * 1024 * 1024
     const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK))
     setChunkInfo({ current: 0, total: totalChunks })
 
-    const uploadMs = Math.min(6500, Math.max(1400, file.size / (1024 * 1024) * 55))
+    const uploadMs = Math.min(6500, Math.max(1400, (file.size / (1024 * 1024)) * 55))
     const steps = Math.min(totalChunks, 40)
     for (let i = 1; i <= steps; i++) {
       if (signal.cancelled || runToken.current !== token) return
@@ -145,5 +174,51 @@ export function useScanPipeline() {
     setPhase('done')
   }, [])
 
-  return { phase, fileName, fileSize, uploadProgress, chunkInfo, stageIndex, stageProgress, log, result, start, reset }
+  const start = useCallback(
+    async (file: File) => {
+      cancelSignal.current.cancelled = true
+      await Promise.resolve()
+      const signal = { cancelled: false }
+      cancelSignal.current = signal
+      const token = ++runToken.current
+
+      const useReal = isRealAnalysisConfigured()
+      setMode(useReal ? 'real' : 'simulated')
+      setFileName(file.name)
+      setFileSize(file.size)
+      setUploadProgress(0)
+      setStageIndex(0)
+      setStageProgress(0)
+      setLog([])
+      setResult(null)
+      setFrames([])
+      setAnalysis(null)
+      setErrorMessage(null)
+
+      if (useReal) {
+        await runReal(file, signal, token)
+      } else {
+        await runSimulated(file, signal, token)
+      }
+    },
+    [runReal, runSimulated],
+  )
+
+  return {
+    mode,
+    phase,
+    fileName,
+    fileSize,
+    uploadProgress,
+    chunkInfo,
+    stageIndex,
+    stageProgress,
+    log,
+    result,
+    frames,
+    analysis,
+    errorMessage,
+    start,
+    reset,
+  }
 }

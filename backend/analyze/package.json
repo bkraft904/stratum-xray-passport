@@ -1,0 +1,9 @@
+{
+  "name": "stratum-analyze-lambda",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.117.1",
+    "zod": "^4.4.3"
+  }
+}
