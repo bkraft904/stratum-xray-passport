@@ -82,9 +82,20 @@ export function Badge({ children, tone = 'cyan' }: { children: ReactNode; tone?:
   )
 }
 
-export function CardShell({ className = '', children }: { className?: string; children: ReactNode }) {
+export function CardShell({
+  className = '',
+  children,
+  onClick,
+}: {
+  className?: string
+  children: ReactNode
+  onClick?: () => void
+}) {
   return (
-    <div className={`relative overflow-hidden rounded-2xl border border-hair bg-gradient-to-b from-surface to-surface/40 ${className}`}>
+    <div
+      onClick={onClick}
+      className={`relative overflow-hidden rounded-2xl border border-hair bg-gradient-to-b from-surface to-surface/40 ${className}`}
+    >
       {children}
     </div>
   )

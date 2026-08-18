@@ -5,6 +5,7 @@ import { HowItWorks } from './components/HowItWorks'
 import { FeatureGrid } from './components/FeatureGrid'
 import { FloorplanDemo } from './components/FloorplanDemo'
 import { ScanLab } from './components/ScanLab'
+import { VaultPanel } from './components/VaultPanel'
 import { BuildingPassport } from './components/BuildingPassport'
 import { BusinessModel } from './components/BusinessModel'
 import { Trust } from './components/Trust'
@@ -22,6 +23,7 @@ export default function App() {
         <FeatureGrid />
         <FloorplanDemo />
         <ScanLab />
+        <VaultPanel />
         <BuildingPassport />
         <BusinessModel />
         <Trust />

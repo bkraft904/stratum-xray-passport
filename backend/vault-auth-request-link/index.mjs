@@ -37,7 +37,7 @@ export const handler = async (event) => {
     })
   );
 
-  const link = `${process.env.APP_URL}/auth/verify?token=${token}`;
+  const link = `${process.env.APP_URL}?vault_token=${token}`;
 
   const textBody = `Sign in to Stratum Vault
 
