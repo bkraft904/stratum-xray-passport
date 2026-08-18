@@ -14,6 +14,8 @@ export interface Property {
   ownerEmail: string
   shareEnabled: boolean
   createdAt: string
+  paid: boolean
+  scanCount: number
 }
 
 export interface Scan {
@@ -28,7 +30,7 @@ export interface Scan {
   model: string
 }
 
-class VaultApiError extends Error {
+export class VaultApiError extends Error {
   status: number
   constructor(message: string, status: number) {
     super(message)
@@ -126,6 +128,10 @@ export interface PublicScan {
   imageType: ImageType
   summary: string
   findings: Finding[]
+}
+
+export function createCheckoutSession(propertyId: string): Promise<{ url: string }> {
+  return request(`/properties/${propertyId}/checkout`, { method: 'POST' })
 }
 
 export function getPublicProperty(propertyId: string): Promise<{ address: string; scans: PublicScan[] }> {

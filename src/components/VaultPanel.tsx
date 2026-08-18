@@ -5,6 +5,7 @@ import {
   Check,
   Download,
   FileText,
+  Lock,
   Link2,
   LogOut,
   Mail,
@@ -30,6 +31,8 @@ import {
   requestOwnershipTransfer,
   acceptOwnershipTransfer,
   setPropertyShared,
+  createCheckoutSession,
+  VaultApiError,
   type Property,
   type Scan,
 } from '../lib/vaultApi'
@@ -58,7 +61,20 @@ export function VaultPanel() {
   const [answer, setAnswer] = useState<string | null>(null)
   const [transferEmail, setTransferEmail] = useState('')
   const [transferSent, setTransferSent] = useState(false)
+  const [checkoutStatus, setCheckoutStatus] = useState<'success' | 'cancel' | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // After a Stripe redirect back, show the result and clean the URL.
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    const status = url.searchParams.get('vault_checkout')
+    if (status === 'success' || status === 'cancel') {
+      setCheckoutStatus(status)
+      url.searchParams.delete('vault_checkout')
+      url.searchParams.delete('vault_view_property')
+      window.history.replaceState({}, '', url.toString())
+    }
+  }, [])
 
   // On load, check for a magic-link or transfer-accept token in the URL and verify it.
   useEffect(() => {
@@ -154,11 +170,29 @@ export function VaultPanel() {
       const frames = await Promise.all(imageFiles.map(imageFileToFrame))
       const scan = await createVaultScan(selected.propertyId, frames)
       setScans((prev) => [scan, ...prev])
+      setSelected((prev) => (prev ? { ...prev, scanCount: prev.scanCount + 1 } : prev))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Scan failed.')
+      if (err instanceof VaultApiError && err.status === 402) {
+        // Expected once the free scan is used — the paywall card below
+        // handles this, not a generic error banner.
+      } else {
+        setError(err instanceof Error ? err.message : 'Scan failed.')
+      }
     } finally {
       setBusy(false)
     }
+  }
+
+  function handleUnlock() {
+    if (!selected) return
+    setError(null)
+    setBusy(true)
+    createCheckoutSession(selected.propertyId)
+      .then(({ url }) => {
+        window.location.href = url
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Could not start checkout.'))
+      .finally(() => setBusy(false))
   }
 
   function handleGenerateReport() {
@@ -229,11 +263,21 @@ export function VaultPanel() {
           eyebrow="Stratum Vault"
           icon={<ShieldCheck size={13} />}
           title="Your permanent, owned property record"
-          description="Sign in to create a property, run scans against it, and build a growing, exportable record — not a one-time report."
+          description="Sign in to create a property, run scans against it, and build a growing, exportable record — not a one-time report. First scan on every property is free; $49 one-time unlocks unlimited scans on that property after that."
         />
 
         {error ? (
           <div className="rounded-xl border border-red/30 bg-red/10 px-4 py-3 text-sm text-red">{error}</div>
+        ) : null}
+
+        {checkoutStatus === 'success' ? (
+          <div className="rounded-xl border border-green/30 bg-green/10 px-4 py-3 text-sm text-green">
+            Payment received — this property is unlocked. Open it to keep scanning.
+          </div>
+        ) : checkoutStatus === 'cancel' ? (
+          <div className="rounded-xl border border-hair-strong bg-surface-2 px-4 py-3 text-sm text-fg-dim">
+            Checkout cancelled — no charge was made.
+          </div>
         ) : null}
 
         {verifying ? (
@@ -314,21 +358,37 @@ export function VaultPanel() {
                 </button>
                 <h3 className="font-display text-xl text-fg">{selected.address}</h3>
 
-                <CardShell
-                  className="flex cursor-pointer flex-col items-center gap-2 border-dashed p-8 text-center"
-                  onClick={() => inputRef.current?.click()}
-                >
-                  <UploadCloud className="text-cyan-soft" size={24} />
-                  <p className="text-sm text-fg">Upload up to {MAX_IMAGES} photos to add a scan</p>
-                  <input
-                    ref={inputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => handleFiles(e.target.files)}
-                  />
-                </CardShell>
+                {selected.scanCount >= 1 && !selected.paid ? (
+                  <CardShell className="flex flex-col items-center gap-3 p-8 text-center">
+                    <Lock className="text-amber" size={24} />
+                    <p className="text-sm text-fg">This property's free scan is used.</p>
+                    <p className="max-w-sm text-xs text-fg-dim">
+                      Unlock it for a one-time $49 to add unlimited scans, keep building the record as renovation continues.
+                    </p>
+                    <Button variant="primary" onClick={handleUnlock}>
+                      {busy ? 'Redirecting…' : 'Unlock this property — $49'}
+                    </Button>
+                  </CardShell>
+                ) : (
+                  <CardShell
+                    className="flex cursor-pointer flex-col items-center gap-2 border-dashed p-8 text-center"
+                    onClick={() => inputRef.current?.click()}
+                  >
+                    <UploadCloud className="text-cyan-soft" size={24} />
+                    <p className="text-sm text-fg">
+                      Upload up to {MAX_IMAGES} photos to add a scan
+                      {selected.scanCount === 0 ? ' — first one is free' : ''}
+                    </p>
+                    <input
+                      ref={inputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => handleFiles(e.target.files)}
+                    />
+                  </CardShell>
+                )}
 
                 <div className="flex flex-wrap gap-3">
                   <Button variant="secondary" onClick={handleGenerateReport}>

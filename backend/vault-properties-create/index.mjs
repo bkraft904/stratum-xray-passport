@@ -24,12 +24,11 @@ export const handler = async (event) => {
   const propertyId = randomUUID();
   const createdAt = new Date().toISOString();
 
-  await ddb.send(
-    new PutCommand({
-      TableName: TABLES.properties,
-      Item: { propertyId, ownerEmail: email, address, createdAt, shareEnabled: false },
-    })
-  );
+  // First scan is free (scanCount check in vault-scans-create); paid
+  // unlocks every scan after that for this property.
+  const property = { propertyId, ownerEmail: email, address, createdAt, shareEnabled: false, paid: false, scanCount: 0 };
 
-  return json(201, { propertyId, address, createdAt }, headers);
+  await ddb.send(new PutCommand({ TableName: TABLES.properties, Item: property }));
+
+  return json(201, property, headers);
 };

@@ -25,6 +25,16 @@ Parameters:
     Type: String
     Default: "https://bkraft904.github.io/stratum-xray-passport"
     Description: Base URL of the deployed site — used to build the magic-link sign-in URL.
+  StripeSecretKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Stripe secret key (sk_...) for creating Checkout Sessions. Leave blank until Stripe is set up — checkout/webhook simply won't work yet.
+  StripeWebhookSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Signing secret (whsec_...) for the Stripe webhook endpoint. Only obtainable after creating the webhook in the Stripe dashboard, which needs this stack's URL first — so this is set in a follow-up deploy.
 
 Resources:
   ScanLabHttpApi:
@@ -307,7 +317,7 @@ Resources:
           PROPERTIES_TABLE: !Ref PropertiesTable
           SCANS_TABLE: !Ref ScansTable
       Policies:
-        - DynamoDBReadPolicy: { TableName: !Ref PropertiesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref PropertiesTable }
         - DynamoDBWritePolicy: { TableName: !Ref ScansTable }
       Events:
         Create:
@@ -477,6 +487,54 @@ Resources:
         PublicView:
           Type: HttpApi
           Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/properties/{id}/public", Method: GET }
+
+  VaultCheckoutCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-checkout-create/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
+          PROPERTIES_TABLE: !Ref PropertiesTable
+          SCANS_TABLE: !Ref ScansTable
+          STRIPE_SECRET_KEY: !Ref StripeSecretKey
+          APP_URL: !Ref AppUrl
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref PropertiesTable }
+      Events:
+        Checkout:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/properties/{id}/checkout", Method: POST }
+
+  VaultStripeWebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-stripe-webhook/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          PROPERTIES_TABLE: !Ref PropertiesTable
+          STRIPE_SECRET_KEY: !Ref StripeSecretKey
+          STRIPE_WEBHOOK_SECRET: !Ref StripeWebhookSecret
+      Policies:
+        - DynamoDBWritePolicy: { TableName: !Ref PropertiesTable }
+      Events:
+        Webhook:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/stripe/webhook", Method: POST }
 
 Outputs:
   ApiUrl:

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb, TABLES } from "./db.mjs";
 import { authenticate, unauthorized } from "./auth.mjs";
 import { corsHeaders, json } from "./http.mjs";
@@ -20,6 +20,17 @@ export const handler = async (event) => {
   );
   if (!property || property.ownerEmail !== email) {
     return json(404, { error: "Property not found." }, headers);
+  }
+
+  // First scan on a property is free so the AI can actually be tried before
+  // paying. Every scan after that needs the one-time unlock — checked here,
+  // before the (costly) vision call, not after.
+  if ((property.scanCount || 0) >= 1 && !property.paid) {
+    return json(
+      402,
+      { error: "This property's free scan is used. Unlock it to add more scans.", code: "PAYMENT_REQUIRED" },
+      headers
+    );
   }
 
   let body;
@@ -70,6 +81,15 @@ export const handler = async (event) => {
   };
 
   await ddb.send(new PutCommand({ TableName: TABLES.scans, Item: scan }));
+
+  await ddb.send(
+    new UpdateCommand({
+      TableName: TABLES.properties,
+      Key: { propertyId },
+      UpdateExpression: "SET scanCount = if_not_exists(scanCount, :zero) + :one",
+      ExpressionAttributeValues: { ":zero": 0, ":one": 1 },
+    })
+  );
 
   return json(201, scan, headers);
 };
