@@ -41,6 +41,13 @@ Resources:
         AllowHeaders:
           - Content-Type
           - Authorization
+      # Baseline protection against runaway cost from a script or scraper —
+      # /analyze and /auth/request-link are unauthenticated and each call
+      # costs real money (Anthropic tokens, SES sends). 5 req/s steady
+      # state, bursts up to 10, shared across all routes on this API.
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 5
+        ThrottlingBurstLimit: 10
 
   AnalyzeFunction:
     Type: AWS::Serverless::Function
@@ -132,6 +139,21 @@ Resources:
           KeyType: HASH
         - AttributeName: scanId
           KeyType: RANGE
+
+  TransferTokensTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-transfer-tokens"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: token
+          AttributeType: S
+      KeySchema:
+        - AttributeName: token
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
 
   VaultAuthRequestLinkFunction:
     Type: AWS::Serverless::Function
@@ -343,6 +365,118 @@ Resources:
         Ask:
           Type: HttpApi
           Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/properties/{id}/ask", Method: POST }
+
+  VaultTransferRequestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-transfer-request/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
+          PROPERTIES_TABLE: !Ref PropertiesTable
+          SCANS_TABLE: !Ref ScansTable
+          TRANSFER_TOKENS_TABLE: !Ref TransferTokensTable
+          FROM_EMAIL: !Ref FromEmail
+          APP_URL: !Ref AppUrl
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref PropertiesTable }
+        - DynamoDBWritePolicy: { TableName: !Ref TransferTokensTable }
+        - Statement:
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource: "*"
+      Events:
+        Transfer:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/properties/{id}/transfer", Method: POST }
+
+  VaultTransferAcceptFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-transfer-accept/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
+          PROPERTIES_TABLE: !Ref PropertiesTable
+          SCANS_TABLE: !Ref ScansTable
+          TRANSFER_TOKENS_TABLE: !Ref TransferTokensTable
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref TransferTokensTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref PropertiesTable }
+        - DynamoDBWritePolicy: { TableName: !Ref UsersTable }
+      Events:
+        TransferAccept:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/transfer/accept", Method: GET }
+
+  VaultShareToggleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-share-toggle/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
+          PROPERTIES_TABLE: !Ref PropertiesTable
+          SCANS_TABLE: !Ref ScansTable
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref PropertiesTable }
+      Events:
+        Share:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/properties/{id}/share", Method: POST }
+
+  VaultPublicPropertyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-public-property/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
+          PROPERTIES_TABLE: !Ref PropertiesTable
+          SCANS_TABLE: !Ref ScansTable
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref PropertiesTable }
+        - DynamoDBReadPolicy: { TableName: !Ref ScansTable }
+      Events:
+        PublicView:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/properties/{id}/public", Method: GET }
 
 Outputs:
   ApiUrl:

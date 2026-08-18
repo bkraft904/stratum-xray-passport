@@ -3,7 +3,9 @@ import { motion } from 'framer-motion'
 import {
   Building2,
   Check,
+  Download,
   FileText,
+  Link2,
   LogOut,
   Mail,
   MessageCircle,
@@ -12,6 +14,7 @@ import {
   ShieldCheck,
   Sparkles,
   UploadCloud,
+  UserPlus,
 } from 'lucide-react'
 import { Container, SectionHeading, Button, Badge, CardShell } from './ui'
 import {
@@ -24,6 +27,9 @@ import {
   createVaultScan,
   getPropertyReport,
   askProperty,
+  requestOwnershipTransfer,
+  acceptOwnershipTransfer,
+  setPropertyShared,
   type Property,
   type Scan,
 } from '../lib/vaultApi'
@@ -32,6 +38,7 @@ import { imageFileToFrame, isImageFile } from '../lib/frameExtractor'
 
 const CONFIGURED = isVaultConfigured()
 const VAULT_TOKEN_PARAM = 'vault_token'
+const VAULT_TRANSFER_TOKEN_PARAM = 'vault_transfer_token'
 const MAX_IMAGES = 4
 
 export function VaultPanel() {
@@ -49,28 +56,37 @@ export function VaultPanel() {
   const [report, setReport] = useState<string | null>(null)
   const [question, setQuestion] = useState('')
   const [answer, setAnswer] = useState<string | null>(null)
+  const [transferEmail, setTransferEmail] = useState('')
+  const [transferSent, setTransferSent] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // On load, check for a magic-link token in the URL and verify it.
+  // On load, check for a magic-link or transfer-accept token in the URL and verify it.
   useEffect(() => {
     if (!CONFIGURED) return
     const url = new URL(window.location.href)
-    const token = url.searchParams.get(VAULT_TOKEN_PARAM)
-    if (!token) {
+    const signInToken = url.searchParams.get(VAULT_TOKEN_PARAM)
+    const transferToken = url.searchParams.get(VAULT_TRANSFER_TOKEN_PARAM)
+
+    if (!signInToken && !transferToken) {
       const existing = getSession()
       if (existing) setSignedInEmail(getSessionEmail())
       return
     }
+
     setVerifying(true)
-    verifySignInToken(token)
+    const verification = signInToken ? verifySignInToken(signInToken) : acceptOwnershipTransfer(transferToken as string)
+    verification
       .then(({ session, email: verifiedEmail }) => {
         setSession(session, verifiedEmail)
         setSignedInEmail(verifiedEmail)
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Sign-in link is invalid or expired.'))
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : 'This link is invalid or expired.')
+      )
       .finally(() => {
         setVerifying(false)
         url.searchParams.delete(VAULT_TOKEN_PARAM)
+        url.searchParams.delete(VAULT_TRANSFER_TOKEN_PARAM)
         window.history.replaceState({}, '', url.toString())
       })
   }, [])
@@ -163,6 +179,44 @@ export function VaultPanel() {
     askProperty(selected.propertyId, question.trim())
       .then(({ answer: text }) => setAnswer(text))
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not get an answer.'))
+      .finally(() => setBusy(false))
+  }
+
+  function handleExport() {
+    if (!selected) return
+    const payload = { property: selected, scans }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `stratum-vault-${selected.address.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function handleTransfer(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selected || !transferEmail.trim()) return
+    setError(null)
+    setBusy(true)
+    requestOwnershipTransfer(selected.propertyId, transferEmail.trim())
+      .then(() => setTransferSent(true))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Could not send the transfer offer.'))
+      .finally(() => setBusy(false))
+  }
+
+  function handleToggleShare() {
+    if (!selected) return
+    setError(null)
+    setBusy(true)
+    setPropertyShared(selected.propertyId, !selected.shareEnabled)
+      .then(({ shareEnabled }) => {
+        setSelected((prev) => (prev ? { ...prev, shareEnabled } : prev))
+        setProperties((prev) =>
+          prev.map((p) => (p.propertyId === selected.propertyId ? { ...p, shareEnabled } : p))
+        )
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Could not update sharing.'))
       .finally(() => setBusy(false))
   }
 
@@ -280,11 +334,54 @@ export function VaultPanel() {
                   <Button variant="secondary" onClick={handleGenerateReport}>
                     <FileText size={16} /> {busy ? 'Working…' : 'Generate report'}
                   </Button>
+                  <Button variant="secondary" onClick={handleExport}>
+                    <Download size={16} /> Export JSON
+                  </Button>
+                  <Button variant="secondary" onClick={handleToggleShare}>
+                    <Link2 size={16} /> {selected.shareEnabled ? 'Stop sharing' : 'Share publicly'}
+                  </Button>
                 </div>
+
+                {selected.shareEnabled ? (
+                  <CardShell className="p-4 text-sm text-fg-dim">
+                    Public link (anyone with it can view, no sign-in needed):{' '}
+                    <a
+                      className="text-cyan-soft underline"
+                      href={`${window.location.origin}${window.location.pathname}?vault_view=${selected.propertyId}`}
+                    >
+                      {window.location.origin}
+                      {window.location.pathname}?vault_view={selected.propertyId}
+                    </a>
+                  </CardShell>
+                ) : null}
 
                 {report ? (
                   <CardShell className="whitespace-pre-wrap p-6 text-sm text-fg-dim">{report}</CardShell>
                 ) : null}
+
+                <CardShell className="p-6">
+                  <div className="mb-3 flex items-center gap-2 text-fg">
+                    <UserPlus size={16} className="text-cyan-soft" /> Transfer ownership
+                  </div>
+                  {transferSent ? (
+                    <p className="text-sm text-fg-dim">
+                      Sent — they'll get an email to accept. Ownership changes once they click it.
+                    </p>
+                  ) : (
+                    <form onSubmit={handleTransfer} className="flex gap-3">
+                      <input
+                        type="email"
+                        value={transferEmail}
+                        onChange={(e) => setTransferEmail(e.target.value)}
+                        placeholder="new-owner@example.com"
+                        className="flex-1 rounded-lg border border-hair-strong bg-surface-2 px-4 py-3 text-fg outline-none focus:border-cyan/50"
+                      />
+                      <Button type="submit" variant="secondary">
+                        Send offer
+                      </Button>
+                    </form>
+                  )}
+                </CardShell>
 
                 <form onSubmit={handleAsk} className="flex gap-3">
                   <input

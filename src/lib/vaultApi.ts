@@ -101,3 +101,37 @@ export function askProperty(propertyId: string, question: string): Promise<{ ans
     body: JSON.stringify({ question }),
   })
 }
+
+export function requestOwnershipTransfer(propertyId: string, newOwnerEmail: string): Promise<{ message: string }> {
+  return request(`/properties/${propertyId}/transfer`, {
+    method: 'POST',
+    body: JSON.stringify({ newOwnerEmail }),
+  })
+}
+
+export function acceptOwnershipTransfer(token: string): Promise<{ session: string; email: string; propertyId: string }> {
+  return request(`/transfer/accept?token=${encodeURIComponent(token)}`)
+}
+
+export function setPropertyShared(propertyId: string, enabled: boolean): Promise<{ propertyId: string; shareEnabled: boolean }> {
+  return request(`/properties/${propertyId}/share`, {
+    method: 'POST',
+    body: JSON.stringify({ enabled }),
+  })
+}
+
+export interface PublicScan {
+  scanId: string
+  createdAt: string
+  imageType: ImageType
+  summary: string
+  findings: Finding[]
+}
+
+export function getPublicProperty(propertyId: string): Promise<{ address: string; scans: PublicScan[] }> {
+  // Public route — deliberately does not attach an Authorization header.
+  return fetch(`${VAULT_API_URL}/properties/${propertyId}/public`).then(async (response) => {
+    if (!response.ok) throw new VaultApiError('This property record is not shared, or does not exist.', response.status)
+    return (await response.json()) as { address: string; scans: PublicScan[] }
+  })
+}
