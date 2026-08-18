@@ -70,8 +70,12 @@ export async function analyzeImages(images) {
     output_config: { effort: "medium", format: zodOutputFormat(AnalysisSchema) },
   });
 
+  if (!response.parsed_output) {
+    throw new Error("The model did not return parseable output. Try again.");
+  }
+
   return {
-    ...response.parsed,
+    ...response.parsed_output,
     model: response.model,
     usage: response.usage,
   };

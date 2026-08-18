@@ -45,7 +45,7 @@ export const handler = async (event) => {
   );
 
   const findingsOnly = (scans || []).flatMap((scan) =>
-    scan.findings.map((f) => ({ ...f, scanDate: scan.createdAt, imageType: scan.imageType }))
+    (scan.findings || []).map((f) => ({ ...f, scanDate: scan.createdAt, imageType: scan.imageType }))
   );
 
   const response = await client.messages.create({
