@@ -12,7 +12,17 @@ const FindingSchema = z.object({
   confidence: z.enum(["low", "medium", "high"]),
 });
 
+const IMAGE_TYPES = [
+  "wall_section_closeup",
+  "full_room_view",
+  "floor_plan_document",
+  "multiple_areas",
+  "unclear_or_unrelated",
+];
+
 const AnalysisSchema = z.object({
+  imageType: z.enum(IMAGE_TYPES),
+  scopeNote: z.string(),
   summary: z.string(),
   findings: z.array(FindingSchema),
   caveats: z.string(),
@@ -80,11 +90,27 @@ export const handler = async (event) => {
       model: "claude-opus-5",
       max_tokens: 4000,
       system:
-        "You are a construction/building-systems inspector analyzing photos taken before drywall closes a wall. " +
-        "Only report what is visibly identifiable in the images — pipe material, wire gauge markings, framing type, " +
-        "visible brand or model plates, apparent stud spacing, duct material, and similar. Do not invent exact " +
-        "measurements, spatial coordinates, or components you cannot actually see. If the images don't clearly " +
-        "show construction elements, say so plainly in `caveats` instead of fabricating findings.",
+        "You are a construction/building-systems inspector analyzing uploaded images that may or may not be " +
+        "pre-drywall walkthrough photos. Before analyzing, classify what you're actually looking at into exactly " +
+        "one `imageType`:\n" +
+        "- wall_section_closeup: a close-up of one open stud bay / wall cavity — the ideal input, where individual " +
+        "pipes, wires and framing members are actually visible.\n" +
+        "- full_room_view: a wide shot of a room — walls, ceiling, floor visible as a whole, not a close-up of any " +
+        "one cavity. Only note what's genuinely visible at that distance (visible outlets, fixtures, overall " +
+        "framing state); don't invent close-up detail the wide shot couldn't show.\n" +
+        "- floor_plan_document: an already-drawn 2D floor plan, blueprint, or CAD export — not a photo of a real " +
+        "space at all. Describe what the document shows (rooms, labels, layout) rather than inventing behind-the-" +
+        "wall findings, since there's no wall cavity to have seen into.\n" +
+        "- multiple_areas: the supplied images show clearly different rooms or unrelated areas rather than one " +
+        "continuous space — note this in scopeNote so findings aren't assumed to be from the same room.\n" +
+        "- unclear_or_unrelated: the images don't show construction/building content at all, or are too unclear " +
+        "to say anything meaningful. Return an empty findings array and explain why in caveats — never fabricate " +
+        "findings to fill the schema.\n" +
+        "Write a one-sentence scopeNote explaining what you classified and why, so the person uploading understands " +
+        "why the analysis is scoped the way it is. Only report what is visibly identifiable in the images — pipe " +
+        "material, wire gauge markings, framing type, visible brand or model plates, apparent stud spacing, duct " +
+        "material, and similar. Do not invent exact measurements, spatial coordinates, or components you cannot " +
+        "actually see.",
       messages: [
         {
           role: "user",
@@ -93,9 +119,10 @@ export const handler = async (event) => {
             {
               type: "text",
               text:
-                "Analyze these frames from a pre-drywall walkthrough. Identify every visible construction element " +
-                "you can (plumbing, electrical, structural, HVAC, materials) with a short label, a plain-language " +
-                "description, the specific visual evidence you're basing it on, and your confidence.",
+                "First classify these images (imageType + scopeNote), then analyze them accordingly. If they show " +
+                "construction elements, identify every one you can (plumbing, electrical, structural, HVAC, " +
+                "materials) with a short label, a plain-language description, the specific visual evidence you're " +
+                "basing it on, and your confidence.",
             },
           ],
         },
@@ -108,6 +135,8 @@ export const handler = async (event) => {
     }
 
     return respond(200, {
+      imageType: response.parsed_output.imageType,
+      scopeNote: response.parsed_output.scopeNote,
       summary: response.parsed_output.summary,
       findings: response.parsed_output.findings,
       caveats: response.parsed_output.caveats,

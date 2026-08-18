@@ -2,6 +2,8 @@ import type { Frame } from './frameExtractor'
 
 export type FindingCategory = 'plumbing' | 'electrical' | 'structural' | 'hvac' | 'material' | 'other'
 
+export type ImageType = 'wall_section_closeup' | 'full_room_view' | 'floor_plan_document' | 'multiple_areas' | 'unclear_or_unrelated'
+
 export interface Finding {
   category: FindingCategory
   label: string
@@ -11,6 +13,8 @@ export interface Finding {
 }
 
 export interface AnalysisResult {
+  imageType: ImageType
+  scopeNote: string
   summary: string
   findings: Finding[]
   caveats: string

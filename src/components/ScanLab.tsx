@@ -23,7 +23,7 @@ import { LayerToggle } from './LayerToggle'
 import { STAGES, useScanPipeline } from '../lib/useScanPipeline'
 import { formatBytes } from '../lib/format'
 import { isImageFile, isVideoFile } from '../lib/frameExtractor'
-import { isRealAnalysisConfigured, type Finding, type FindingCategory } from '../lib/analyzeApi'
+import { isRealAnalysisConfigured, type Finding, type FindingCategory, type ImageType } from '../lib/analyzeApi'
 import { buildApproximateLayout } from '../lib/floorplan'
 import type { Hotspot, Layer } from '../lib/floorplan'
 
@@ -34,6 +34,14 @@ const CATEGORY_META: Record<FindingCategory, { label: string; color: string }> =
   hvac: { label: 'HVAC', color: '#8b7bff' },
   material: { label: 'Material', color: '#33e6a3' },
   other: { label: 'Other', color: '#9aa3b8' },
+}
+
+const IMAGE_TYPE_META: Record<ImageType, { label: string; tone: 'green' | 'cyan' | 'amber' | 'violet' | 'neutral' }> = {
+  wall_section_closeup: { label: 'Wall section close-up', tone: 'green' },
+  full_room_view: { label: 'Full room view', tone: 'cyan' },
+  floor_plan_document: { label: 'Floor plan document', tone: 'violet' },
+  multiple_areas: { label: 'Multiple areas', tone: 'amber' },
+  unclear_or_unrelated: { label: 'Unclear / not construction', tone: 'neutral' },
 }
 
 const CONFIDENCE_TONE: Record<Finding['confidence'], 'green' | 'amber' | 'neutral'> = {
@@ -333,8 +341,9 @@ export function ScanLab() {
 
             {phase === 'done' && mode === 'real' && analysis && (
               <motion.div key="done-real" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-4">
                   <div className="flex flex-wrap items-center gap-2.5">
+                    <Badge tone={IMAGE_TYPE_META[analysis.imageType].tone}>{IMAGE_TYPE_META[analysis.imageType].label}</Badge>
                     <Badge tone="green">{analysis.findings.length} findings</Badge>
                     <Badge tone="neutral">{analysis.model}</Badge>
                     <Badge tone="neutral">
@@ -345,6 +354,8 @@ export function ScanLab() {
                     <RotateCcw className="size-3.5" /> Analyze another
                   </Button>
                 </div>
+
+                <p className="mb-6 text-[12.5px] leading-relaxed text-fg-faint">{analysis.scopeNote}</p>
 
                 {frames.length > 0 && (
                   <div className="mb-6 flex gap-2 overflow-x-auto pb-1">
