@@ -1,7 +1,7 @@
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { ddb, TABLES } from "/opt/nodejs/lib/db.mjs";
-import { authenticate, unauthorized } from "/opt/nodejs/lib/auth.mjs";
-import { corsHeaders, json } from "/opt/nodejs/lib/http.mjs";
+import { ddb, TABLES } from "./db.mjs";
+import { authenticate, unauthorized } from "./auth.mjs";
+import { corsHeaders, json } from "./http.mjs";
 
 export const handler = async (event) => {
   const headers = corsHeaders(process.env.ALLOWED_ORIGIN);

@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
-import { ddb, TABLES } from "/opt/nodejs/lib/db.mjs";
-import { corsHeaders, json } from "/opt/nodejs/lib/http.mjs";
+import { ddb, TABLES } from "./db.mjs";
+import { corsHeaders, json } from "./http.mjs";
 
 const ses = new SESClient({});
 const TOKEN_TTL_MINUTES = 15;

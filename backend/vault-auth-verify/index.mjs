@@ -1,7 +1,7 @@
 import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { ddb, TABLES } from "/opt/nodejs/lib/db.mjs";
-import { signSession } from "/opt/nodejs/lib/auth.mjs";
-import { corsHeaders, json } from "/opt/nodejs/lib/http.mjs";
+import { ddb, TABLES } from "./db.mjs";
+import { signSession } from "./auth.mjs";
+import { corsHeaders, json } from "./http.mjs";
 
 export const handler = async (event) => {
   const headers = corsHeaders(process.env.ALLOWED_ORIGIN);

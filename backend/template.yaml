@@ -133,17 +133,6 @@ Resources:
         - AttributeName: scanId
           KeyType: RANGE
 
-  VaultSharedLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: !Sub "${AWS::StackName}-vault-shared"
-      ContentUri: layers/vault-shared/
-      CompatibleRuntimes:
-        - nodejs20.x
-      RetentionPolicy: Delete
-    Metadata:
-      BuildMethod: nodejs20.x
-
   VaultAuthRequestLinkFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -153,7 +142,6 @@ Resources:
       Architectures: [arm64]
       Timeout: 15
       MemorySize: 256
-      Layers: [!Ref VaultSharedLayer]
       Environment:
         Variables:
           JWT_SECRET: !Ref JwtSecret
@@ -185,7 +173,6 @@ Resources:
       Architectures: [arm64]
       Timeout: 15
       MemorySize: 256
-      Layers: [!Ref VaultSharedLayer]
       Environment:
         Variables:
           JWT_SECRET: !Ref JwtSecret
@@ -212,7 +199,6 @@ Resources:
       Architectures: [arm64]
       Timeout: 15
       MemorySize: 256
-      Layers: [!Ref VaultSharedLayer]
       Environment:
         Variables:
           JWT_SECRET: !Ref JwtSecret
@@ -238,7 +224,6 @@ Resources:
       Architectures: [arm64]
       Timeout: 15
       MemorySize: 256
-      Layers: [!Ref VaultSharedLayer]
       Environment:
         Variables:
           JWT_SECRET: !Ref JwtSecret
@@ -264,7 +249,6 @@ Resources:
       Architectures: [arm64]
       Timeout: 15
       MemorySize: 256
-      Layers: [!Ref VaultSharedLayer]
       Environment:
         Variables:
           JWT_SECRET: !Ref JwtSecret
@@ -291,7 +275,6 @@ Resources:
       Architectures: [arm64]
       Timeout: 60
       MemorySize: 512
-      Layers: [!Ref VaultSharedLayer]
       Environment:
         Variables:
           JWT_SECRET: !Ref JwtSecret
@@ -318,7 +301,6 @@ Resources:
       Architectures: [arm64]
       Timeout: 60
       MemorySize: 512
-      Layers: [!Ref VaultSharedLayer]
       Environment:
         Variables:
           JWT_SECRET: !Ref JwtSecret
@@ -345,7 +327,6 @@ Resources:
       Architectures: [arm64]
       Timeout: 30
       MemorySize: 512
-      Layers: [!Ref VaultSharedLayer]
       Environment:
         Variables:
           JWT_SECRET: !Ref JwtSecret

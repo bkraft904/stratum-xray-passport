@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
-import { ddb, TABLES } from "/opt/nodejs/lib/db.mjs";
-import { authenticate, unauthorized } from "/opt/nodejs/lib/auth.mjs";
-import { corsHeaders, json } from "/opt/nodejs/lib/http.mjs";
-import { analyzeImages, MAX_IMAGES, MAX_IMAGE_BYTES, ALLOWED_MEDIA_TYPES } from "/opt/nodejs/lib/vision.mjs";
+import { ddb, TABLES } from "./db.mjs";
+import { authenticate, unauthorized } from "./auth.mjs";
+import { corsHeaders, json } from "./http.mjs";
+import { analyzeImages, MAX_IMAGES, MAX_IMAGE_BYTES, ALLOWED_MEDIA_TYPES } from "./vision.mjs";
 
 export const handler = async (event) => {
   const headers = corsHeaders(process.env.ALLOWED_ORIGIN);

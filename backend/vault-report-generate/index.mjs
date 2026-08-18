@@ -1,8 +1,8 @@
 import { GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { ddb, TABLES } from "/opt/nodejs/lib/db.mjs";
-import { authenticate, unauthorized } from "/opt/nodejs/lib/auth.mjs";
-import { corsHeaders, json } from "/opt/nodejs/lib/http.mjs";
-import { client } from "/opt/nodejs/lib/vision.mjs";
+import { ddb, TABLES } from "./db.mjs";
+import { authenticate, unauthorized } from "./auth.mjs";
+import { corsHeaders, json } from "./http.mjs";
+import { client } from "./vision.mjs";
 
 const REPORT_SYSTEM_PROMPT = `You are Stratum Vault's report writer. You are given a JSON list of scans
 for one property, each already containing structured, verified findings from earlier vision analysis.
