@@ -90,7 +90,7 @@ export function ScanLab() {
 
   const approxLayout = useMemo(() => {
     if (!analysis) return null
-    return buildApproximateLayout(analysis.findings, `${fileName}-${fileSize}`)
+    return buildApproximateLayout(analysis.findings, `${fileName}-${fileSize}`, analysis.imageType)
   }, [analysis, fileName, fileSize])
 
   function handleFile(file: File | null) {
@@ -387,8 +387,10 @@ export function ScanLab() {
                           />
                         </div>
                         <p className="mt-3 px-1 text-[11.5px] leading-relaxed text-fg-faint">
-                          The outline is a generic illustration — we have no real spatial data from your upload.
-                          Each pin is one of your actual findings; positions on the outline are not measured.
+                          The outline is scoped to what you captured — a single area, or a couple of areas if
+                          multiple were detected — but its exact shape isn't measured, since a phone photo has no
+                          real spatial data. Each pin is one of your actual findings; positions on the outline are
+                          illustrative, not measured.
                         </p>
                       </div>
                       <div className="min-h-[300px]">

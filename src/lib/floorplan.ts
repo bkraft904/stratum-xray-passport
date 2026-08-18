@@ -410,16 +410,79 @@ export interface RealFinding {
   confidence: 'low' | 'medium' | 'high'
 }
 
+export type CaptureImageType =
+  | 'wall_section_closeup'
+  | 'full_room_view'
+  | 'floor_plan_document'
+  | 'multiple_areas'
+  | 'unclear_or_unrelated'
+
 const CONFIDENCE_SCORE: Record<RealFinding['confidence'], number> = {
   high: 0.92,
   medium: 0.65,
   low: 0.4,
 }
 
-export function buildApproximateLayout(findings: RealFinding[], seedInput: string): { floorplan: FloorPlan; unplaced: RealFinding[] } {
+// A generic floor-plan document already IS a layout, and an unrelated/
+// unclear image has nothing to place — don't draw an illustrative outline
+// in either case, just return nothing (the caller skips rendering).
+function scopeForImageType(imageType?: CaptureImageType): 'single' | 'multi' | 'none' {
+  switch (imageType) {
+    case 'multiple_areas':
+      return 'multi'
+    case 'floor_plan_document':
+    case 'unclear_or_unrelated':
+      return 'none'
+    default:
+      return 'single'
+  }
+}
+
+// Sized to what was actually captured — one section for a close-up or a
+// single room shot, two for multiple distinct areas — rather than a fixed
+// multi-room house layout regardless of input. Rooms are labeled neutrally
+// since we have no evidence of what kind of room was actually photographed.
+function buildScopedTemplate(scope: 'single' | 'multi'): { rooms: Room[]; walls: WallSeg[] } {
+  if (scope === 'multi') {
+    return {
+      rooms: [
+        { x: 60, y: 120, w: 330, h: 320, label: 'Area 1' },
+        { x: 410, y: 120, w: 330, h: 320, label: 'Area 2' },
+      ],
+      walls: [
+        { x1: 60, y1: 120, x2: 740, y2: 120, exterior: true },
+        { x1: 740, y1: 120, x2: 740, y2: 440, exterior: true },
+        { x1: 740, y1: 440, x2: 60, y2: 440, exterior: true },
+        { x1: 60, y1: 440, x2: 60, y2: 120, exterior: true },
+        { x1: 410, y1: 120, x2: 410, y2: 440 },
+      ],
+    }
+  }
+  return {
+    rooms: [{ x: 140, y: 100, w: 520, h: 360, label: 'Scanned Area' }],
+    walls: [
+      { x1: 140, y1: 100, x2: 660, y2: 100, exterior: true },
+      { x1: 660, y1: 100, x2: 660, y2: 460, exterior: true },
+      { x1: 660, y1: 460, x2: 140, y2: 460, exterior: true },
+      { x1: 140, y1: 460, x2: 140, y2: 100, exterior: true },
+    ],
+  }
+}
+
+export function buildApproximateLayout(
+  findings: RealFinding[],
+  seedInput: string,
+  imageType?: CaptureImageType,
+): { floorplan: FloorPlan; unplaced: RealFinding[] } {
   const seed = seedFromString(seedInput || 'stratum')
   const rand = mulberry32(seed)
-  const { rooms, walls } = buildLayoutTemplate(rand)
+  const scope = scopeForImageType(imageType)
+
+  if (scope === 'none') {
+    return { floorplan: { viewBox: [0, 0, 800, 560], rooms: [], walls: [], hotspots: [] }, unplaced: findings }
+  }
+
+  const { rooms, walls } = buildScopedTemplate(scope)
 
   const interiorWalls = walls.filter((w) => !w.exterior)
   const wallPool = interiorWalls.length ? [...interiorWalls, ...walls] : walls
