@@ -38,10 +38,12 @@ jobs:
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --capabilities CAPABILITY_IAM \
-            --parameter-overrides AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }} AllowedOrigin=https://bkraft904.github.io
+            --parameter-overrides AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }} AllowedOrigin=https://bkraft904.github.io JwtSecret=${{ secrets.JWT_SECRET }} FromEmail=${{ vars.VAULT_FROM_EMAIL }}
 
-      - name: Print API URL
+      - name: Print API URLs
         working-directory: backend
         run: |
           aws cloudformation describe-stacks --stack-name stratum-scan-lab \
             --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text
+          aws cloudformation describe-stacks --stack-name stratum-scan-lab \
+            --query "Stacks[0].Outputs[?OutputKey=='VaultApiUrl'].OutputValue" --output text

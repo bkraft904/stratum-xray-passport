@@ -1,0 +1,6 @@
+{
+  "name": "stratum-vault-properties-create",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module"
+}

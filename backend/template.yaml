@@ -14,6 +14,17 @@ Parameters:
     Type: String
     Default: "https://bkraft904.github.io"
     Description: Origin allowed to call this API (your deployed site's URL, no trailing slash).
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Description: Random secret used to sign Vault session tokens. Generate with `openssl rand -hex 32`.
+  FromEmail:
+    Type: String
+    Description: Verified SES sender address for magic-link sign-in emails (must be verified in SES first).
+  AppUrl:
+    Type: String
+    Default: "https://bkraft904.github.io/stratum-xray-passport"
+    Description: Base URL of the deployed site — used to build the magic-link sign-in URL.
 
 Resources:
   ScanLabHttpApi:
@@ -24,10 +35,12 @@ Resources:
           - !Ref AllowedOrigin
           - "http://localhost:5173"
         AllowMethods:
+          - GET
           - POST
           - OPTIONS
         AllowHeaders:
           - Content-Type
+          - Authorization
 
   AnalyzeFunction:
     Type: AWS::Serverless::Function
@@ -51,7 +64,309 @@ Resources:
             Path: /analyze
             Method: POST
 
+  # ---------------------------------------------------------------------
+  # Vault: the persistence/ownership layer. Everything below turns the
+  # one-shot Scan Lab analysis into a property-owned, accumulating record.
+  # ---------------------------------------------------------------------
+
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-users"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+
+  LoginTokensTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-login-tokens"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: token
+          AttributeType: S
+      KeySchema:
+        - AttributeName: token
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  PropertiesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-properties"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: propertyId
+          AttributeType: S
+        - AttributeName: ownerEmail
+          AttributeType: S
+      KeySchema:
+        - AttributeName: propertyId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: ownerEmail-index
+          KeySchema:
+            - AttributeName: ownerEmail
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  ScansTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-scans"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: propertyId
+          AttributeType: S
+        - AttributeName: scanId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: propertyId
+          KeyType: HASH
+        - AttributeName: scanId
+          KeyType: RANGE
+
+  VaultSharedLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-vault-shared"
+      ContentUri: layers/vault-shared/
+      CompatibleRuntimes:
+        - nodejs20.x
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: nodejs20.x
+
+  VaultAuthRequestLinkFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-auth-request-link/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Layers: [!Ref VaultSharedLayer]
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
+          PROPERTIES_TABLE: !Ref PropertiesTable
+          SCANS_TABLE: !Ref ScansTable
+          FROM_EMAIL: !Ref FromEmail
+          APP_URL: !Ref AppUrl
+      Policies:
+        - DynamoDBWritePolicy: { TableName: !Ref LoginTokensTable }
+        - Statement:
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource: "*"
+      Events:
+        RequestLink:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: /auth/request-link, Method: POST }
+
+  VaultAuthVerifyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-auth-verify/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Layers: [!Ref VaultSharedLayer]
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
+          PROPERTIES_TABLE: !Ref PropertiesTable
+          SCANS_TABLE: !Ref ScansTable
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref LoginTokensTable }
+        - DynamoDBWritePolicy: { TableName: !Ref UsersTable }
+      Events:
+        Verify:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: /auth/verify, Method: GET }
+
+  VaultPropertiesCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-properties-create/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Layers: [!Ref VaultSharedLayer]
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
+          PROPERTIES_TABLE: !Ref PropertiesTable
+          SCANS_TABLE: !Ref ScansTable
+      Policies:
+        - DynamoDBWritePolicy: { TableName: !Ref PropertiesTable }
+      Events:
+        Create:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: /properties, Method: POST }
+
+  VaultPropertiesListFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-properties-list/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Layers: [!Ref VaultSharedLayer]
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
+          PROPERTIES_TABLE: !Ref PropertiesTable
+          SCANS_TABLE: !Ref ScansTable
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref PropertiesTable }
+      Events:
+        List:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: /properties, Method: GET }
+
+  VaultPropertiesGetFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-properties-get/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Layers: [!Ref VaultSharedLayer]
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
+          PROPERTIES_TABLE: !Ref PropertiesTable
+          SCANS_TABLE: !Ref ScansTable
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref PropertiesTable }
+        - DynamoDBReadPolicy: { TableName: !Ref ScansTable }
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/properties/{id}", Method: GET }
+
+  VaultScansCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-scans-create/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 60
+      MemorySize: 512
+      Layers: [!Ref VaultSharedLayer]
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
+          PROPERTIES_TABLE: !Ref PropertiesTable
+          SCANS_TABLE: !Ref ScansTable
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref PropertiesTable }
+        - DynamoDBWritePolicy: { TableName: !Ref ScansTable }
+      Events:
+        Create:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/properties/{id}/scans", Method: POST }
+
+  VaultReportGenerateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-report-generate/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 60
+      MemorySize: 512
+      Layers: [!Ref VaultSharedLayer]
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
+          PROPERTIES_TABLE: !Ref PropertiesTable
+          SCANS_TABLE: !Ref ScansTable
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref PropertiesTable }
+        - DynamoDBReadPolicy: { TableName: !Ref ScansTable }
+      Events:
+        Report:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/properties/{id}/report", Method: GET }
+
+  VaultAskFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-ask/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 30
+      MemorySize: 512
+      Layers: [!Ref VaultSharedLayer]
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
+          PROPERTIES_TABLE: !Ref PropertiesTable
+          SCANS_TABLE: !Ref ScansTable
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref PropertiesTable }
+        - DynamoDBReadPolicy: { TableName: !Ref ScansTable }
+      Events:
+        Ask:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/properties/{id}/ask", Method: POST }
+
 Outputs:
   ApiUrl:
     Description: Invoke URL for the analyze endpoint — set this as VITE_ANALYZE_API_URL
     Value: !Sub "https://${ScanLabHttpApi}.execute-api.${AWS::Region}.amazonaws.com/analyze"
+  VaultApiUrl:
+    Description: Base URL for the Vault endpoints (append /properties, /auth/request-link, etc.)
+    Value: !Sub "https://${ScanLabHttpApi}.execute-api.${AWS::Region}.amazonaws.com"

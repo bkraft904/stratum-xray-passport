@@ -83,6 +83,53 @@ Without this variable set, the Scan Lab falls back to its labeled client-side
 demo simulation — the site never breaks, it just isn't doing real analysis
 yet.
 
+## Vault: the persistence/ownership layer
+
+The `vault-*` functions turn one-shot Scan Lab analysis into an accumulating,
+owned property record: email magic-link sign-in, `Property` and `Scan`
+records in DynamoDB, an AI-synthesized report across all of a property's
+scans, and a chat endpoint that answers questions using only stored
+findings. They share code (auth, DynamoDB client, the vision-analysis
+helper) via a Lambda Layer at `layers/vault-shared/`.
+
+### One-time setup this adds
+
+1. **Generate a JWT signing secret** and store it as a GitHub secret named
+   `JWT_SECRET`:
+   ```bash
+   openssl rand -hex 32
+   ```
+2. **Verify a sending identity in SES** — Vault emails magic sign-in links,
+   and Amazon SES refuses to send from (or, in sandbox mode, *to*) an
+   unverified address. In the AWS Console: SES → Verified identities →
+   Create identity → verify either a single email address or your whole
+   domain. Put that address in a repo **variable** named `VAULT_FROM_EMAIL`.
+3. **SES sandbox mode**: new AWS accounts start in the SES sandbox, which
+   only sends to *verified* recipient addresses — fine for testing with your
+   own inbox, but real users won't get their sign-in email until you request
+   production access (AWS Console → SES → Account dashboard → Request
+   production access; usually approved within a day for this kind of use
+   case).
+4. Everything else (the four DynamoDB tables, the Lambda layer, the six
+   `vault-*` functions) deploys automatically with the rest of the stack —
+   no separate `bootstrap` step needed, since the existing GitHub Actions
+   role already has `PowerUserAccess`.
+
+### API surface
+
+| Route | Method | Auth | Purpose |
+|---|---|---|---|
+| `/auth/request-link` | POST | — | `{ email }` → emails a 15-minute sign-in link |
+| `/auth/verify` | GET | — | `?token=` → returns a 30-day session JWT |
+| `/properties` | POST | Bearer | `{ address }` → creates a property |
+| `/properties` | GET | Bearer | Lists the caller's properties |
+| `/properties/{id}` | GET | Bearer | Property + every scan recorded against it |
+| `/properties/{id}/scans` | POST | Bearer | Same payload as `/analyze`, but persists the result |
+| `/properties/{id}/report` | GET | Bearer | Synthesizes all scans into one Markdown report |
+| `/properties/{id}/ask` | POST | Bearer | `{ question }` → answers from stored findings only |
+
+Authenticated routes expect `Authorization: Bearer <session JWT>`.
+
 ## Cost & limits
 
 - Model: `claude-opus-5`. Each analysis request sends up to 4 images and
