@@ -38,7 +38,7 @@ jobs:
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --capabilities CAPABILITY_IAM \
-            --parameter-overrides AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }} AllowedOrigin=https://bkraft904.github.io JwtSecret=${{ secrets.JWT_SECRET }} FromEmail=${{ vars.VAULT_FROM_EMAIL }}
+            --parameter-overrides AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }} AllowedOrigin=https://bkraft904.github.io JwtSecret=${{ secrets.JWT_SECRET }} FromEmail=${{ vars.VAULT_FROM_EMAIL }} StripeSecretKey=${{ secrets.STRIPE_SECRET_KEY }} StripeWebhookSecret=${{ secrets.STRIPE_WEBHOOK_SECRET }}
 
       - name: Print API URLs
         working-directory: backend
