@@ -38,11 +38,13 @@ import {
   openBillingPortal,
   getAccount,
   updateAccount,
+  getAdminStats,
   VaultApiError,
   type Property,
   type Scan,
   type Subscription,
   type SubscriptionTier,
+  type AdminStats,
 } from '../lib/vaultApi'
 import { getSession, getSessionEmail, setSession, clearSession } from '../lib/vaultSession'
 import { imageFileToFrame, isImageFile } from '../lib/frameExtractor'
@@ -82,6 +84,9 @@ export function VaultPanel() {
   const [checkoutStatus, setCheckoutStatus] = useState<'success' | 'cancel' | null>(null)
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [companyName, setCompanyName] = useState('')
+  const [adminStats, setAdminStats] = useState<AdminStats | null>(null)
+  const [adminError, setAdminError] = useState<string | null>(null)
+  const showAdmin = new URLSearchParams(window.location.search).has('vault_admin')
   const inputRef = useRef<HTMLInputElement>(null)
 
   // After a Stripe redirect back, show the result and clean the URL.
@@ -144,7 +149,12 @@ export function VaultPanel() {
       .catch(() => {
         /* Non-critical — reports just won't be branded if this fails. */
       })
-  }, [signedInEmail])
+    if (showAdmin) {
+      getAdminStats()
+        .then((stats) => setAdminStats(stats))
+        .catch((err) => setAdminError(err instanceof Error ? err.message : 'Could not load stats.'))
+    }
+  }, [signedInEmail, showAdmin])
 
   function handleRequestLink(e: React.FormEvent) {
     e.preventDefault()
@@ -438,6 +448,29 @@ export function VaultPanel() {
                 <LogOut size={14} /> Sign out
               </Button>
             </div>
+
+            {showAdmin ? (
+              <CardShell className="p-5">
+                <p className="mb-3 text-sm text-fg">
+                  Funnel — last {adminStats?.days ?? 30} days
+                </p>
+                {adminError ? (
+                  <p className="text-sm text-red">{adminError}</p>
+                ) : adminStats ? (
+                  <ul className="flex flex-col gap-1.5 text-xs text-fg-dim">
+                    {Object.entries(adminStats.counts).map(([type, count]) => (
+                      <li key={type} className="flex items-center justify-between gap-4">
+                        <span>{type.replace(/_/g, ' ')}</span>
+                        <span className="text-fg">{count}</span>
+                      </li>
+                    ))}
+                    {Object.keys(adminStats.counts).length === 0 ? <li>No events recorded yet.</li> : null}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-fg-dim">Loading…</p>
+                )}
+              </CardShell>
+            ) : null}
 
             {!selected ? (
               <div className="flex flex-col gap-6">

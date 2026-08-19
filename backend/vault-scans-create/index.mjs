@@ -5,6 +5,7 @@ import { authenticate, unauthorized } from "./auth.mjs";
 import { corsHeaders, json } from "./http.mjs";
 import { analyzeImages, MAX_IMAGES, MAX_IMAGE_BYTES, ALLOWED_MEDIA_TYPES } from "./vision.mjs";
 import { TIERS } from "./tiers.mjs";
+import { trackEvent } from "./event.mjs";
 
 export const handler = async (event) => {
   const headers = corsHeaders(process.env.ALLOWED_ORIGIN);
@@ -33,6 +34,7 @@ export const handler = async (event) => {
   if (hasActiveSubscription) {
     const cap = TIERS[subscription.tier]?.scanCap ?? Infinity;
     if ((subscription.scansUsedThisPeriod || 0) >= cap) {
+      await trackEvent("paywall_hit", { email, propertyId });
       return json(
         402,
         {
@@ -46,6 +48,7 @@ export const handler = async (event) => {
     // First scan on a property is free so the AI can actually be tried
     // before paying. Every scan after that needs the one-time unlock —
     // checked here, before the (costly) vision call, not after.
+    await trackEvent("paywall_hit", { email, propertyId });
     return json(
       402,
       { error: "This property's free scan is used. Unlock it to add more scans.", code: "PAYMENT_REQUIRED" },
@@ -121,6 +124,8 @@ export const handler = async (event) => {
       })
     );
   }
+
+  await trackEvent("scan_completed", { email, propertyId });
 
   return json(201, scan, headers);
 };

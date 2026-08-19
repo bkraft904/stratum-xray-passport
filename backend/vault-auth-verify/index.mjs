@@ -2,6 +2,7 @@ import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb, TABLES } from "./db.mjs";
 import { signSession } from "./auth.mjs";
 import { corsHeaders, json } from "./http.mjs";
+import { trackEvent } from "./event.mjs";
 
 export const handler = async (event) => {
   const headers = corsHeaders(process.env.ALLOWED_ORIGIN);
@@ -37,6 +38,8 @@ export const handler = async (event) => {
   ).catch((err) => {
     if (err.name !== "ConditionalCheckFailedException") throw err;
   });
+
+  await trackEvent("sign_in_completed", { email: record.email });
 
   const session = signSession(record.email);
   return json(200, { session, email: record.email }, headers);

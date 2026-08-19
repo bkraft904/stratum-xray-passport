@@ -35,6 +35,10 @@ Parameters:
     NoEcho: true
     Default: ""
     Description: Signing secret (whsec_...) for the Stripe webhook endpoint. Only obtainable after creating the webhook in the Stripe dashboard, which needs this stack's URL first — so this is set in a follow-up deploy.
+  AdminEmail:
+    Type: String
+    Default: ""
+    Description: Comma-separated email(s) allowed to read /admin/stats. Leave blank to keep the endpoint locked (fail-closed) until you're ready to use it.
 
 Resources:
   ScanLabHttpApi:
@@ -177,6 +181,18 @@ Resources:
         - AttributeName: email
           KeyType: HASH
 
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-events"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: eventId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: eventId
+          KeyType: HASH
+
   VaultAuthRequestLinkFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -197,8 +213,10 @@ Resources:
           SCANS_TABLE: !Ref ScansTable
           FROM_EMAIL: !Ref FromEmail
           APP_URL: !Ref AppUrl
+          EVENTS_TABLE: !Ref EventsTable
       Policies:
         - DynamoDBWritePolicy: { TableName: !Ref LoginTokensTable }
+        - DynamoDBWritePolicy: { TableName: !Ref EventsTable }
         - Statement:
             - Effect: Allow
               Action: ses:SendEmail
@@ -226,9 +244,11 @@ Resources:
           LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
           PROPERTIES_TABLE: !Ref PropertiesTable
           SCANS_TABLE: !Ref ScansTable
+          EVENTS_TABLE: !Ref EventsTable
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref LoginTokensTable }
         - DynamoDBWritePolicy: { TableName: !Ref UsersTable }
+        - DynamoDBWritePolicy: { TableName: !Ref EventsTable }
       Events:
         Verify:
           Type: HttpApi
@@ -252,8 +272,10 @@ Resources:
           LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
           PROPERTIES_TABLE: !Ref PropertiesTable
           SCANS_TABLE: !Ref ScansTable
+          EVENTS_TABLE: !Ref EventsTable
       Policies:
         - DynamoDBWritePolicy: { TableName: !Ref PropertiesTable }
+        - DynamoDBWritePolicy: { TableName: !Ref EventsTable }
       Events:
         Create:
           Type: HttpApi
@@ -329,10 +351,12 @@ Resources:
           PROPERTIES_TABLE: !Ref PropertiesTable
           SCANS_TABLE: !Ref ScansTable
           SUBSCRIPTIONS_TABLE: !Ref SubscriptionsTable
+          EVENTS_TABLE: !Ref EventsTable
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref PropertiesTable }
         - DynamoDBWritePolicy: { TableName: !Ref ScansTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SubscriptionsTable }
+        - DynamoDBWritePolicy: { TableName: !Ref EventsTable }
       Events:
         Create:
           Type: HttpApi
@@ -356,9 +380,11 @@ Resources:
           LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
           PROPERTIES_TABLE: !Ref PropertiesTable
           SCANS_TABLE: !Ref ScansTable
+          EVENTS_TABLE: !Ref EventsTable
       Policies:
         - DynamoDBReadPolicy: { TableName: !Ref PropertiesTable }
         - DynamoDBReadPolicy: { TableName: !Ref ScansTable }
+        - DynamoDBWritePolicy: { TableName: !Ref EventsTable }
       Events:
         Report:
           Type: HttpApi
@@ -469,8 +495,10 @@ Resources:
           LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
           PROPERTIES_TABLE: !Ref PropertiesTable
           SCANS_TABLE: !Ref ScansTable
+          EVENTS_TABLE: !Ref EventsTable
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref PropertiesTable }
+        - DynamoDBWritePolicy: { TableName: !Ref EventsTable }
       Events:
         Share:
           Type: HttpApi
@@ -522,8 +550,10 @@ Resources:
           SCANS_TABLE: !Ref ScansTable
           STRIPE_SECRET_KEY: !Ref StripeSecretKey
           APP_URL: !Ref AppUrl
+          EVENTS_TABLE: !Ref EventsTable
       Policies:
         - DynamoDBReadPolicy: { TableName: !Ref PropertiesTable }
+        - DynamoDBWritePolicy: { TableName: !Ref EventsTable }
       Events:
         Checkout:
           Type: HttpApi
@@ -544,9 +574,11 @@ Resources:
           SUBSCRIPTIONS_TABLE: !Ref SubscriptionsTable
           STRIPE_SECRET_KEY: !Ref StripeSecretKey
           STRIPE_WEBHOOK_SECRET: !Ref StripeWebhookSecret
+          EVENTS_TABLE: !Ref EventsTable
       Policies:
         - DynamoDBWritePolicy: { TableName: !Ref PropertiesTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SubscriptionsTable }
+        - DynamoDBWritePolicy: { TableName: !Ref EventsTable }
       Events:
         Webhook:
           Type: HttpApi
@@ -609,6 +641,9 @@ Resources:
           ALLOWED_ORIGIN: !Ref AllowedOrigin
           STRIPE_SECRET_KEY: !Ref StripeSecretKey
           APP_URL: !Ref AppUrl
+          EVENTS_TABLE: !Ref EventsTable
+      Policies:
+        - DynamoDBWritePolicy: { TableName: !Ref EventsTable }
       Events:
         Checkout:
           Type: HttpApi
@@ -657,6 +692,28 @@ Resources:
         Portal:
           Type: HttpApi
           Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/subscription/portal", Method: POST }
+
+  VaultAdminStatsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-admin-stats/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          EVENTS_TABLE: !Ref EventsTable
+          ADMIN_EMAIL: !Ref AdminEmail
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref EventsTable }
+      Events:
+        Stats:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/admin/stats", Method: GET }
 
 Outputs:
   ApiUrl:

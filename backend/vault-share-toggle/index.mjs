@@ -2,6 +2,7 @@ import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb, TABLES } from "./db.mjs";
 import { authenticate, unauthorized } from "./auth.mjs";
 import { corsHeaders, json } from "./http.mjs";
+import { trackEvent } from "./event.mjs";
 
 export const handler = async (event) => {
   const headers = corsHeaders(process.env.ALLOWED_ORIGIN);
@@ -37,6 +38,8 @@ export const handler = async (event) => {
       ExpressionAttributeValues: { ":enabled": enabled },
     })
   );
+
+  if (enabled) await trackEvent("share_enabled", { email, propertyId });
 
   return json(200, { propertyId, shareEnabled: enabled }, headers);
 };

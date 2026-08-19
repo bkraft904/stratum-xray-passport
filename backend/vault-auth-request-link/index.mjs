@@ -3,6 +3,7 @@ import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { ddb, TABLES } from "./db.mjs";
 import { corsHeaders, json } from "./http.mjs";
+import { trackEvent } from "./event.mjs";
 
 const ses = new SESClient({});
 const TOKEN_TTL_MINUTES = 15;
@@ -75,6 +76,8 @@ This link expires in ${TOKEN_TTL_MINUTES} minutes and can only be used once. If 
       },
     })
   );
+
+  await trackEvent("sign_in_requested", { email });
 
   return json(200, { message: "Check your email for a sign-in link." }, headers);
 };

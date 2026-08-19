@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import { authenticate, unauthorized } from "./auth.mjs";
 import { corsHeaders, json } from "./http.mjs";
 import { TIERS } from "./tiers.mjs";
+import { trackEvent } from "./event.mjs";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -47,6 +48,8 @@ export const handler = async (event) => {
     subscription_data: { metadata: { email, tier } },
     metadata: { email, tier },
   });
+
+  await trackEvent("subscription_checkout_started", { email });
 
   return json(200, { url: session.url }, headers);
 };

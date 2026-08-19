@@ -134,8 +134,27 @@ helper) via a Lambda Layer at `layers/vault-shared/`.
 | `/stripe/webhook` | POST | — | Stripe-only. Handles both one-time and subscription lifecycle events |
 | `/account` | GET | Bearer | `{ companyName }` for the signed-in account |
 | `/account` | POST | Bearer | `{ companyName }` → saves it, used as report letterhead |
+| `/admin/stats` | GET | Bearer, admin-only | `?days=30` → funnel event counts. 403 unless caller's email is in `AdminEmail` |
 
 Authenticated routes expect `Authorization: Bearer <session JWT>`.
+
+### Analytics / funnel tracking
+
+Key user actions (sign-in requested/completed, property created, scan
+completed, paywall hit, checkout started/completed, subscription
+started/canceled, report generated, share enabled) are logged server-side
+to `EventsTable` via `trackEvent()` (duplicated into each Lambda that needs
+it, same self-contained pattern as everywhere else). Tracking is
+fire-and-forget — a failed write never fails the real request it's
+attached to.
+
+`/admin/stats` is locked by default (`AdminEmail` parameter defaults to
+`""`, and an empty allowlist means nobody is authorized — fail closed). To
+use it: add your email as the `ADMIN_EMAIL` GitHub secret/variable, add
+`AdminEmail=${{ secrets.ADMIN_EMAIL }}` (or `vars.ADMIN_EMAIL`) to
+`deploy-backend.yml`'s `--parameter-overrides`, redeploy, then visit the
+live site signed in with that email and append `?vault_admin=1` to the URL
+to see the funnel counts inline in the Vault section.
 
 ### Subscription tiers
 

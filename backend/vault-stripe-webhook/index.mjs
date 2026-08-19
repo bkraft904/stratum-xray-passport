@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import { UpdateCommand, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb, TABLES } from "./db.mjs";
 import { json } from "./http.mjs";
+import { trackEvent } from "./event.mjs";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -36,6 +37,7 @@ export const handler = async (event) => {
             ExpressionAttributeValues: { ":true": true },
           })
         );
+        await trackEvent("checkout_completed", { email: session.metadata?.ownerEmail, propertyId });
       }
     }
 
@@ -59,6 +61,7 @@ export const handler = async (event) => {
             },
           })
         );
+        await trackEvent("subscription_started", { email });
       }
     }
   }
@@ -105,6 +108,7 @@ export const handler = async (event) => {
           ExpressionAttributeValues: { ":status": "canceled" },
         })
       );
+      await trackEvent("subscription_canceled", { email });
     }
   }
 

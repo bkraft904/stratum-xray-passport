@@ -3,6 +3,7 @@ import { ddb, TABLES } from "./db.mjs";
 import { authenticate, unauthorized } from "./auth.mjs";
 import { corsHeaders, json } from "./http.mjs";
 import { client } from "./vision.mjs";
+import { trackEvent } from "./event.mjs";
 
 const REPORT_SYSTEM_PROMPT = `You are Stratum Vault's report writer. You are given a JSON list of scans
 for one property, each already containing structured, verified findings from earlier vision analysis.
@@ -63,6 +64,8 @@ export const handler = async (event) => {
   });
 
   const report = response.content.find((block) => block.type === "text")?.text ?? "";
+
+  await trackEvent("report_generated", { email, propertyId });
 
   return json(200, { report, scanCount: scans.length, companyName, address: property.address }, headers);
 };

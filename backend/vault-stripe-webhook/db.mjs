@@ -10,4 +10,5 @@ export const TABLES = {
   properties: process.env.PROPERTIES_TABLE,
   scans: process.env.SCANS_TABLE,
   subscriptions: process.env.SUBSCRIPTIONS_TABLE,
+  events: process.env.EVENTS_TABLE,
 };

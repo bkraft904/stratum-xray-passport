@@ -183,3 +183,12 @@ export function createSubscriptionCheckout(tier: SubscriptionTier): Promise<{ ur
 export function openBillingPortal(): Promise<{ url: string }> {
   return request('/subscription/portal', { method: 'POST' })
 }
+
+export interface AdminStats {
+  days: number
+  counts: Record<string, number>
+}
+
+export function getAdminStats(days = 30): Promise<AdminStats> {
+  return request(`/admin/stats?days=${days}`)
+}
