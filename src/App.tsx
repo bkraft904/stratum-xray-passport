@@ -20,13 +20,26 @@ const VaultPanel = lazy(() => import('./components/VaultPanel').then((m) => ({ d
 const PublicPropertyView = lazy(() =>
   import('./components/PublicPropertyView').then((m) => ({ default: m.PublicPropertyView }))
 )
+const CheckoutResult = lazy(() =>
+  import('./components/CheckoutResult').then((m) => ({ default: m.CheckoutResult }))
+)
 
 export default function App() {
-  const publicPropertyId = new URLSearchParams(window.location.search).get('vault_view')
+  const params = new URLSearchParams(window.location.search)
+  const publicPropertyId = params.get('vault_view')
   if (publicPropertyId) {
     return (
       <Suspense fallback={null}>
         <PublicPropertyView propertyId={publicPropertyId} />
+      </Suspense>
+    )
+  }
+
+  const checkoutStatus = params.get('vault_checkout')
+  if (checkoutStatus === 'success' || checkoutStatus === 'cancel') {
+    return (
+      <Suspense fallback={null}>
+        <CheckoutResult status={checkoutStatus} />
       </Suspense>
     )
   }

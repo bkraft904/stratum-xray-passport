@@ -94,23 +94,10 @@ export function VaultPanel() {
   const [answer, setAnswer] = useState<string | null>(null)
   const [transferEmail, setTransferEmail] = useState('')
   const [transferSent, setTransferSent] = useState(false)
-  const [checkoutStatus, setCheckoutStatus] = useState<'success' | 'cancel' | null>(null)
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [companyName, setCompanyName] = useState('')
   const showAdmin = new URLSearchParams(window.location.search).has('vault_admin')
   const inputRef = useRef<HTMLInputElement>(null)
-
-  // After a Stripe redirect back, show the result and clean the URL.
-  useEffect(() => {
-    const url = new URL(window.location.href)
-    const status = url.searchParams.get('vault_checkout')
-    if (status === 'success' || status === 'cancel') {
-      setCheckoutStatus(status)
-      url.searchParams.delete('vault_checkout')
-      url.searchParams.delete('vault_view_property')
-      window.history.replaceState({}, '', url.toString())
-    }
-  }, [])
 
   // On load, check for a magic-link or transfer-accept token in the URL and verify it.
   useEffect(() => {
@@ -231,7 +218,10 @@ export function VaultPanel() {
     setBusy(true)
     createSubscriptionCheckout(tier)
       .then(({ url }) => {
-        window.location.href = url
+        // New tab, so the Vault tab you're already using stays put — pay in
+        // the new tab, then come back and refresh. Falls back to a normal
+        // same-tab redirect if the browser blocks the popup.
+        if (!window.open(url, '_blank')) window.location.href = url
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not start checkout.'))
       .finally(() => setBusy(false))
@@ -320,7 +310,7 @@ export function VaultPanel() {
     setBusy(true)
     createCheckoutSession(selected.propertyId)
       .then(({ url }) => {
-        window.location.href = url
+        if (!window.open(url, '_blank')) window.location.href = url
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not start checkout.'))
       .finally(() => setBusy(false))
@@ -447,16 +437,6 @@ export function VaultPanel() {
 
         {error ? (
           <div className="rounded-xl border border-red/30 bg-red/10 px-4 py-3 text-sm text-red">{error}</div>
-        ) : null}
-
-        {checkoutStatus === 'success' ? (
-          <div className="rounded-xl border border-green/30 bg-green/10 px-4 py-3 text-sm text-green">
-            Payment received — this property is unlocked. Open it to keep scanning.
-          </div>
-        ) : checkoutStatus === 'cancel' ? (
-          <div className="rounded-xl border border-hair-strong bg-surface-2 px-4 py-3 text-sm text-fg-dim">
-            Checkout cancelled — no charge was made.
-          </div>
         ) : null}
 
         {verifying ? (
