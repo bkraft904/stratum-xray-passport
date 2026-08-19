@@ -55,7 +55,8 @@ export function VaultPanel() {
   const [properties, setProperties] = useState<Property[]>([])
   const [newAddress, setNewAddress] = useState('')
   const [selected, setSelected] = useState<Property | null>(null)
-  const [scans, setScans] = useState<Scan[]>([])
+  const [scans, setScans] = useState<(Scan & { photoUrl?: string })[]>([])
+  const [pendingPreviewUrls, setPendingPreviewUrls] = useState<string[]>([])
   const [report, setReport] = useState<string | null>(null)
   const [question, setQuestion] = useState('')
   const [answer, setAnswer] = useState<string | null>(null)
@@ -164,22 +165,37 @@ export function VaultPanel() {
     if (!files || !selected) return
     const imageFiles = Array.from(files).filter(isImageFile).slice(0, MAX_IMAGES)
     if (imageFiles.length === 0) return
+    const propertyId = selected.propertyId
+    const previewUrls = imageFiles.map((f) => URL.createObjectURL(f))
     setError(null)
     setBusy(true)
+    setPendingPreviewUrls(previewUrls)
     try {
       const frames = await Promise.all(imageFiles.map(imageFileToFrame))
-      const scan = await createVaultScan(selected.propertyId, frames)
-      setScans((prev) => [scan, ...prev])
+      const scan = await createVaultScan(propertyId, frames)
+      previewUrls.slice(1).forEach((url) => URL.revokeObjectURL(url))
+      setScans((prev) => [{ ...scan, photoUrl: previewUrls[0] }, ...prev])
       setSelected((prev) => (prev ? { ...prev, scanCount: prev.scanCount + 1 } : prev))
+      setProperties((prev) =>
+        prev.map((p) => (p.propertyId === propertyId ? { ...p, scanCount: p.scanCount + 1 } : p))
+      )
     } catch (err) {
+      previewUrls.forEach((url) => URL.revokeObjectURL(url))
       if (err instanceof VaultApiError && err.status === 402) {
-        // Expected once the free scan is used — the paywall card below
-        // handles this, not a generic error banner.
+        // The free scan was already used server-side, even though the local
+        // state we had didn't reflect that yet (e.g. after navigating back
+        // and re-selecting the property) — sync both so the paywall card
+        // actually shows instead of silently doing nothing.
+        setSelected((prev) => (prev ? { ...prev, scanCount: Math.max(prev.scanCount, 1) } : prev))
+        setProperties((prev) =>
+          prev.map((p) => (p.propertyId === propertyId ? { ...p, scanCount: Math.max(p.scanCount, 1) } : p))
+        )
       } else {
         setError(err instanceof Error ? err.message : 'Scan failed.')
       }
     } finally {
       setBusy(false)
+      setPendingPreviewUrls([])
     }
   }
 
@@ -369,6 +385,20 @@ export function VaultPanel() {
                       {busy ? 'Redirecting…' : 'Unlock this property — $49'}
                     </Button>
                   </CardShell>
+                ) : pendingPreviewUrls.length > 0 ? (
+                  <CardShell className="flex flex-col items-center gap-3 p-8 text-center">
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {pendingPreviewUrls.map((url, i) => (
+                        <img
+                          key={i}
+                          src={url}
+                          alt="Uploaded photo pending analysis"
+                          className="size-20 rounded-lg border border-hair-strong object-cover"
+                        />
+                      ))}
+                    </div>
+                    <p className="text-sm text-fg-dim">Analyzing…</p>
+                  </CardShell>
                 ) : (
                   <CardShell
                     className="flex cursor-pointer flex-col items-center gap-2 border-dashed p-8 text-center"
@@ -466,6 +496,13 @@ export function VaultPanel() {
                           </Badge>
                           <span className="text-xs text-fg-dim">{new Date(scan.createdAt).toLocaleString()}</span>
                         </div>
+                        {scan.photoUrl ? (
+                          <img
+                            src={scan.photoUrl}
+                            alt="Uploaded scan photo"
+                            className="mt-3 h-40 w-full rounded-lg border border-hair-strong object-cover"
+                          />
+                        ) : null}
                         <p className="mt-2 text-sm text-fg">{scan.summary}</p>
                         {scan.findings.length > 0 ? (
                           <ul className="mt-2 flex flex-col gap-1 text-xs text-fg-dim">
