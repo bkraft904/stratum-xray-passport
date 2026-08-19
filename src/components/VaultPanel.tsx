@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import {
   Building2,
   Check,
+  CreditCard,
   Download,
   FileText,
   Lock,
@@ -32,9 +33,14 @@ import {
   acceptOwnershipTransfer,
   setPropertyShared,
   createCheckoutSession,
+  getSubscription,
+  createSubscriptionCheckout,
+  openBillingPortal,
   VaultApiError,
   type Property,
   type Scan,
+  type Subscription,
+  type SubscriptionTier,
 } from '../lib/vaultApi'
 import { getSession, getSessionEmail, setSession, clearSession } from '../lib/vaultSession'
 import { imageFileToFrame, isImageFile } from '../lib/frameExtractor'
@@ -43,6 +49,14 @@ const CONFIGURED = isVaultConfigured()
 const VAULT_TOKEN_PARAM = 'vault_token'
 const VAULT_TRANSFER_TOKEN_PARAM = 'vault_transfer_token'
 const MAX_IMAGES = 4
+
+// Mirrors backend/vault-subscription-checkout-create/tiers.mjs — kept in
+// sync by hand since each Lambda is self-contained (no shared layer).
+const SUBSCRIPTION_TIERS: { tier: SubscriptionTier; name: string; priceDollars: number; scanCapLabel: string; seats: number }[] = [
+  { tier: 'solo', name: 'Solo', priceDollars: 39, scanCapLabel: '20', seats: 1 },
+  { tier: 'crew', name: 'Crew', priceDollars: 99, scanCapLabel: '100', seats: 3 },
+  { tier: 'company', name: 'Company', priceDollars: 249, scanCapLabel: 'Unlimited', seats: 10 },
+]
 
 export function VaultPanel() {
   const [email, setEmail] = useState('')
@@ -63,6 +77,7 @@ export function VaultPanel() {
   const [transferEmail, setTransferEmail] = useState('')
   const [transferSent, setTransferSent] = useState(false)
   const [checkoutStatus, setCheckoutStatus] = useState<'success' | 'cancel' | null>(null)
+  const [subscription, setSubscription] = useState<Subscription | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // After a Stripe redirect back, show the result and clean the URL.
@@ -115,6 +130,11 @@ export function VaultPanel() {
       .then(({ properties: list }) => setProperties(list))
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load properties.'))
       .finally(() => setBusy(false))
+    getSubscription()
+      .then(({ subscription: sub }) => setSubscription(sub))
+      .catch(() => {
+        /* Non-critical — the page still works without knowing plan status. */
+      })
   }, [signedInEmail])
 
   function handleRequestLink(e: React.FormEvent) {
@@ -132,8 +152,31 @@ export function VaultPanel() {
     setSignedInEmail(null)
     setSelected(null)
     setProperties([])
+    setSubscription(null)
     setLinkSent(false)
     setEmail('')
+  }
+
+  function handleSubscribe(tier: SubscriptionTier) {
+    setError(null)
+    setBusy(true)
+    createSubscriptionCheckout(tier)
+      .then(({ url }) => {
+        window.location.href = url
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Could not start checkout.'))
+      .finally(() => setBusy(false))
+  }
+
+  function handleManageBilling() {
+    setError(null)
+    setBusy(true)
+    openBillingPortal()
+      .then(({ url }) => {
+        window.location.href = url
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Could not open billing portal.'))
+      .finally(() => setBusy(false))
   }
 
   function handleCreateProperty(e: React.FormEvent) {
@@ -181,7 +224,7 @@ export function VaultPanel() {
       )
     } catch (err) {
       previewUrls.forEach((url) => URL.revokeObjectURL(url))
-      if (err instanceof VaultApiError && err.status === 402) {
+      if (err instanceof VaultApiError && err.status === 402 && err.code === 'PAYMENT_REQUIRED') {
         // The free scan was already used server-side, even though the local
         // state we had didn't reflect that yet (e.g. after navigating back
         // and re-selecting the property) — sync both so the paywall card
@@ -190,6 +233,8 @@ export function VaultPanel() {
         setProperties((prev) =>
           prev.map((p) => (p.propertyId === propertyId ? { ...p, scanCount: Math.max(p.scanCount, 1) } : p))
         )
+      } else if (err instanceof VaultApiError && err.code === 'SUBSCRIPTION_CAP_REACHED') {
+        setError(err.message)
       } else {
         setError(err instanceof Error ? err.message : 'Scan failed.')
       }
@@ -338,6 +383,53 @@ export function VaultPanel() {
 
             {!selected ? (
               <div className="flex flex-col gap-6">
+                {subscription && subscription.status === 'active' ? (
+                  <CardShell className="flex flex-wrap items-center justify-between gap-3 p-5">
+                    <div>
+                      <div className="flex items-center gap-2 text-fg">
+                        <CreditCard size={16} className="text-cyan-soft" />
+                        {subscription.tierName} plan
+                        <Badge tone="green">Active</Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-fg-dim">
+                        {subscription.scansUsedThisPeriod} of {subscription.scanCap ?? 'unlimited'} scans used this
+                        period
+                        {subscription.currentPeriodEnd
+                          ? ` — renews ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`
+                          : ''}
+                      </p>
+                    </div>
+                    <Button variant="secondary" onClick={handleManageBilling}>
+                      {busy ? 'Opening…' : 'Manage billing'}
+                    </Button>
+                  </CardShell>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    <p className="text-sm text-fg-dim">
+                      Running scans across many properties? A plan replaces the per-property $49 unlock with a
+                      monthly scan allowance.
+                    </p>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      {SUBSCRIPTION_TIERS.map((t) => (
+                        <CardShell key={t.tier} className="flex flex-col gap-2 p-5">
+                          <div className="flex items-center gap-2 text-fg">
+                            {t.name}
+                            {t.tier === 'crew' ? <Badge tone="cyan">Popular</Badge> : null}
+                          </div>
+                          <p className="font-display text-2xl text-fg">
+                            ${t.priceDollars}
+                            <span className="text-sm font-normal text-fg-dim">/mo</span>
+                          </p>
+                          <p className="text-xs text-fg-dim">{t.scanCapLabel} scans/mo · {t.seats} seat{t.seats > 1 ? 's' : ''}</p>
+                          <Button variant={t.tier === 'crew' ? 'primary' : 'secondary'} onClick={() => handleSubscribe(t.tier)}>
+                            {busy ? 'Redirecting…' : 'Subscribe'}
+                          </Button>
+                        </CardShell>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <form onSubmit={handleCreateProperty} className="flex gap-3">
                   <input
                     value={newAddress}
@@ -374,7 +466,7 @@ export function VaultPanel() {
                 </button>
                 <h3 className="font-display text-xl text-fg">{selected.address}</h3>
 
-                {selected.scanCount >= 1 && !selected.paid ? (
+                {selected.scanCount >= 1 && !selected.paid && subscription?.status !== 'active' ? (
                   <CardShell className="flex flex-col items-center gap-3 p-8 text-center">
                     <Lock className="text-amber" size={24} />
                     <p className="text-sm text-fg">This property's free scan is used.</p>

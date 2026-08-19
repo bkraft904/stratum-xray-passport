@@ -32,9 +32,11 @@ export interface Scan {
 
 export class VaultApiError extends Error {
   status: number
-  constructor(message: string, status: number) {
+  code?: string
+  constructor(message: string, status: number, code?: string) {
     super(message)
     this.status = status
+    this.code = code
   }
 }
 
@@ -54,13 +56,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     let message = `Request failed (${response.status}).`
+    let code: string | undefined
     try {
       const body = await response.json()
       if (typeof body?.error === 'string') message = body.error
+      if (typeof body?.code === 'string') code = body.code
     } catch {
       /* response wasn't JSON — keep the generic message */
     }
-    throw new VaultApiError(message, response.status)
+    throw new VaultApiError(message, response.status, code)
   }
 
   return (await response.json()) as T
@@ -140,4 +144,27 @@ export function getPublicProperty(propertyId: string): Promise<{ address: string
     if (!response.ok) throw new VaultApiError('This property record is not shared, or does not exist.', response.status)
     return (await response.json()) as { address: string; scans: PublicScan[] }
   })
+}
+
+export type SubscriptionTier = 'solo' | 'crew' | 'company'
+
+export interface Subscription {
+  tier: SubscriptionTier
+  tierName: string
+  status: string
+  scansUsedThisPeriod: number
+  scanCap: number | null // null means unlimited
+  currentPeriodEnd: string | null
+}
+
+export function getSubscription(): Promise<{ subscription: Subscription | null }> {
+  return request('/subscription')
+}
+
+export function createSubscriptionCheckout(tier: SubscriptionTier): Promise<{ url: string }> {
+  return request('/subscription/checkout', { method: 'POST', body: JSON.stringify({ tier }) })
+}
+
+export function openBillingPortal(): Promise<{ url: string }> {
+  return request('/subscription/portal', { method: 'POST' })
 }

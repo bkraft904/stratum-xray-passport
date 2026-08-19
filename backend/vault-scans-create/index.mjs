@@ -4,6 +4,7 @@ import { ddb, TABLES } from "./db.mjs";
 import { authenticate, unauthorized } from "./auth.mjs";
 import { corsHeaders, json } from "./http.mjs";
 import { analyzeImages, MAX_IMAGES, MAX_IMAGE_BYTES, ALLOWED_MEDIA_TYPES } from "./vision.mjs";
+import { TIERS } from "./tiers.mjs";
 
 export const handler = async (event) => {
   const headers = corsHeaders(process.env.ALLOWED_ORIGIN);
@@ -22,10 +23,29 @@ export const handler = async (event) => {
     return json(404, { error: "Property not found." }, headers);
   }
 
-  // First scan on a property is free so the AI can actually be tried before
-  // paying. Every scan after that needs the one-time unlock — checked here,
-  // before the (costly) vision call, not after.
-  if ((property.scanCount || 0) >= 1 && !property.paid) {
+  // An active subscription bypasses the per-property $49 unlock entirely —
+  // it's gated by a monthly scan cap on the account instead.
+  const { Item: subscription } = await ddb.send(
+    new GetCommand({ TableName: TABLES.subscriptions, Key: { email } })
+  );
+  const hasActiveSubscription = subscription?.status === "active";
+
+  if (hasActiveSubscription) {
+    const cap = TIERS[subscription.tier]?.scanCap ?? Infinity;
+    if ((subscription.scansUsedThisPeriod || 0) >= cap) {
+      return json(
+        402,
+        {
+          error: `You've used all ${cap} scans included in your ${subscription.tier} plan this billing period. Upgrade for more.`,
+          code: "SUBSCRIPTION_CAP_REACHED",
+        },
+        headers
+      );
+    }
+  } else if ((property.scanCount || 0) >= 1 && !property.paid) {
+    // First scan on a property is free so the AI can actually be tried
+    // before paying. Every scan after that needs the one-time unlock —
+    // checked here, before the (costly) vision call, not after.
     return json(
       402,
       { error: "This property's free scan is used. Unlock it to add more scans.", code: "PAYMENT_REQUIRED" },
@@ -90,6 +110,17 @@ export const handler = async (event) => {
       ExpressionAttributeValues: { ":zero": 0, ":one": 1 },
     })
   );
+
+  if (hasActiveSubscription) {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLES.subscriptions,
+        Key: { email },
+        UpdateExpression: "SET scansUsedThisPeriod = if_not_exists(scansUsedThisPeriod, :zero) + :one",
+        ExpressionAttributeValues: { ":zero": 0, ":one": 1 },
+      })
+    );
+  }
 
   return json(201, scan, headers);
 };

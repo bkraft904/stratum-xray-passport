@@ -1,0 +1,10 @@
+{
+  "name": "stratum-vault-subscription-checkout-create",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2",
+    "stripe": "^17.4.0"
+  }
+}

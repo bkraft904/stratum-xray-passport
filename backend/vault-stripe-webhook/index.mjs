@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { UpdateCommand, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb, TABLES } from "./db.mjs";
 import { json } from "./http.mjs";
 
@@ -24,14 +24,85 @@ export const handler = async (event) => {
 
   if (stripeEvent.type === "checkout.session.completed") {
     const session = stripeEvent.data.object;
-    const propertyId = session.metadata?.propertyId;
-    if (propertyId) {
+
+    if (session.mode === "payment") {
+      const propertyId = session.metadata?.propertyId;
+      if (propertyId) {
+        await ddb.send(
+          new UpdateCommand({
+            TableName: TABLES.properties,
+            Key: { propertyId },
+            UpdateExpression: "SET paid = :true",
+            ExpressionAttributeValues: { ":true": true },
+          })
+        );
+      }
+    }
+
+    if (session.mode === "subscription") {
+      const email = session.metadata?.email;
+      const tier = session.metadata?.tier;
+      if (email && tier && session.subscription) {
+        const subscription = await stripe.subscriptions.retrieve(session.subscription);
+        await ddb.send(
+          new PutCommand({
+            TableName: TABLES.subscriptions,
+            Item: {
+              email,
+              tier,
+              status: subscription.status,
+              stripeCustomerId: session.customer,
+              stripeSubscriptionId: session.subscription,
+              scansUsedThisPeriod: 0,
+              currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
+              createdAt: new Date().toISOString(),
+            },
+          })
+        );
+      }
+    }
+  }
+
+  if (stripeEvent.type === "customer.subscription.updated") {
+    const subscription = stripeEvent.data.object;
+    const email = subscription.metadata?.email;
+    if (email) {
+      const { Item: existing } = await ddb.send(new GetCommand({ TableName: TABLES.subscriptions, Key: { email } }));
+      const newPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+      // A changed period end means a new billing cycle actually started
+      // (renewal or plan change) — that's the signal to reset usage, not
+      // every "updated" event (those also fire for things like payment
+      // method changes, which shouldn't wipe the current period's count).
+      const periodRolledOver = !existing || existing.currentPeriodEnd !== newPeriodEnd;
       await ddb.send(
         new UpdateCommand({
-          TableName: TABLES.properties,
-          Key: { propertyId },
-          UpdateExpression: "SET paid = :true",
-          ExpressionAttributeValues: { ":true": true },
+          TableName: TABLES.subscriptions,
+          Key: { email },
+          UpdateExpression:
+            "SET #status = :status, tier = :tier, currentPeriodEnd = :end, scansUsedThisPeriod = :scans",
+          ExpressionAttributeNames: { "#status": "status" },
+          ExpressionAttributeValues: {
+            ":status": subscription.status,
+            ":tier": subscription.metadata?.tier || existing?.tier,
+            ":end": newPeriodEnd,
+            ":scans": periodRolledOver ? 0 : existing?.scansUsedThisPeriod || 0,
+          },
+        })
+      );
+    }
+  }
+
+  if (stripeEvent.type === "customer.subscription.deleted") {
+    const subscription = stripeEvent.data.object;
+    const email = subscription.metadata?.email;
+    if (email) {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLES.subscriptions,
+          Key: { email },
+          UpdateExpression: "SET #status = :status",
+          ExpressionAttributeNames: { "#status": "status" },
+          ExpressionAttributeValues: { ":status": "canceled" },
         })
       );
     }

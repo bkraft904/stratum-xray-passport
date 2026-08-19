@@ -127,8 +127,31 @@ helper) via a Lambda Layer at `layers/vault-shared/`.
 | `/properties/{id}/scans` | POST | Bearer | Same payload as `/analyze`, but persists the result |
 | `/properties/{id}/report` | GET | Bearer | Synthesizes all scans into one Markdown report |
 | `/properties/{id}/ask` | POST | Bearer | `{ question }` → answers from stored findings only |
+| `/properties/{id}/checkout` | POST | Bearer | Creates a Stripe Checkout Session for the one-time $49 per-property unlock |
+| `/subscription` | GET | Bearer | Caller's subscription tier/status/usage, or `{ subscription: null }` |
+| `/subscription/checkout` | POST | Bearer | `{ tier: "solo"\|"crew"\|"company" }` → Stripe subscription Checkout Session |
+| `/subscription/portal` | POST | Bearer | Stripe Billing Portal session for managing/canceling |
+| `/stripe/webhook` | POST | — | Stripe-only. Handles both one-time and subscription lifecycle events |
 
 Authenticated routes expect `Authorization: Bearer <session JWT>`.
+
+### Subscription tiers
+
+Contractors doing volume work get a monthly plan instead of paying $49 per
+property — see `tiers.mjs` (duplicated into each Lambda that needs it, same
+self-contained pattern as everywhere else in this backend):
+
+| Tier | Price | Scans/mo | Seats |
+|---|---|---|---|
+| Solo | $39/mo | 20 | 1 |
+| Crew | $99/mo | 100 | 3 |
+| Company | $249/mo | Unlimited | 10 |
+
+An active subscription bypasses the per-property paywall entirely; instead
+`vault-scans-create` checks the account's monthly scan count against its
+tier's cap. Seats are stored as tier metadata for future use — there's no
+team/multi-user access control built yet, so today a subscription only
+grants scan capacity to the single signed-in account that purchased it.
 
 ## Cost & limits
 

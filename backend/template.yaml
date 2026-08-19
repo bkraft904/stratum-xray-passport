@@ -165,6 +165,18 @@ Resources:
         AttributeName: expiresAt
         Enabled: true
 
+  SubscriptionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-subscriptions"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+
   VaultAuthRequestLinkFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -316,9 +328,11 @@ Resources:
           LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
           PROPERTIES_TABLE: !Ref PropertiesTable
           SCANS_TABLE: !Ref ScansTable
+          SUBSCRIPTIONS_TABLE: !Ref SubscriptionsTable
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref PropertiesTable }
         - DynamoDBWritePolicy: { TableName: !Ref ScansTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref SubscriptionsTable }
       Events:
         Create:
           Type: HttpApi
@@ -527,14 +541,80 @@ Resources:
       Environment:
         Variables:
           PROPERTIES_TABLE: !Ref PropertiesTable
+          SUBSCRIPTIONS_TABLE: !Ref SubscriptionsTable
           STRIPE_SECRET_KEY: !Ref StripeSecretKey
           STRIPE_WEBHOOK_SECRET: !Ref StripeWebhookSecret
       Policies:
         - DynamoDBWritePolicy: { TableName: !Ref PropertiesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref SubscriptionsTable }
       Events:
         Webhook:
           Type: HttpApi
           Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/stripe/webhook", Method: POST }
+
+  VaultSubscriptionCheckoutCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-subscription-checkout-create/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          STRIPE_SECRET_KEY: !Ref StripeSecretKey
+          APP_URL: !Ref AppUrl
+      Events:
+        Checkout:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/subscription/checkout", Method: POST }
+
+  VaultSubscriptionStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-subscription-status/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          SUBSCRIPTIONS_TABLE: !Ref SubscriptionsTable
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref SubscriptionsTable }
+      Events:
+        Status:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/subscription", Method: GET }
+
+  VaultSubscriptionPortalFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-subscription-portal/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          SUBSCRIPTIONS_TABLE: !Ref SubscriptionsTable
+          STRIPE_SECRET_KEY: !Ref StripeSecretKey
+          APP_URL: !Ref AppUrl
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref SubscriptionsTable }
+      Events:
+        Portal:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/subscription/portal", Method: POST }
 
 Outputs:
   ApiUrl:
