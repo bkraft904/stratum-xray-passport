@@ -141,11 +141,10 @@ export function AdminDashboard() {
   }, [stats, days])
 
   const visits = useMemo(() => {
-    if (!stats) return { total: 0, uniqueVisitors: 0, data: [] as { date: string; count: number }[] }
+    if (!stats) return { total: 0, data: [] as { date: string; count: number }[] }
     const pageViews = stats.events.filter((e) => e.type === 'page_view')
     return {
       total: pageViews.length,
-      uniqueVisitors: new Set(pageViews.map((e) => e.visitorId).filter(Boolean)).size,
       data: buildDailySeries(stats.events, days, (t) => t === 'page_view'),
     }
   }, [stats, days])
@@ -209,10 +208,7 @@ export function AdminDashboard() {
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
               <div>
                 <p className="text-xs text-fg-dim">Site visits</p>
-                <p className="font-display text-3xl text-fg">
-                  {visits.total.toLocaleString()}
-                  <span className="ml-2 text-sm font-normal text-fg-dim">{visits.uniqueVisitors.toLocaleString()} unique visitors</span>
-                </p>
+                <p className="font-display text-3xl text-fg">{visits.total.toLocaleString()}</p>
               </div>
             </div>
             <svg viewBox="0 0 560 48" className="w-full">
