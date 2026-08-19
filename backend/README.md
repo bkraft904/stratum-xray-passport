@@ -132,6 +132,8 @@ helper) via a Lambda Layer at `layers/vault-shared/`.
 | `/subscription/checkout` | POST | Bearer | `{ tier: "solo"\|"crew"\|"company" }` → Stripe subscription Checkout Session |
 | `/subscription/portal` | POST | Bearer | Stripe Billing Portal session for managing/canceling |
 | `/stripe/webhook` | POST | — | Stripe-only. Handles both one-time and subscription lifecycle events |
+| `/account` | GET | Bearer | `{ companyName }` for the signed-in account |
+| `/account` | POST | Bearer | `{ companyName }` → saves it, used as report letterhead |
 
 Authenticated routes expect `Authorization: Bearer <session JWT>`.
 

@@ -97,8 +97,23 @@ export function createVaultScan(propertyId: string, frames: Frame[]): Promise<Sc
   })
 }
 
-export function getPropertyReport(propertyId: string): Promise<{ report: string; scanCount: number }> {
+export interface PropertyReport {
+  report: string
+  scanCount: number
+  companyName: string
+  address: string
+}
+
+export function getPropertyReport(propertyId: string): Promise<PropertyReport> {
   return request(`/properties/${propertyId}/report`)
+}
+
+export function getAccount(): Promise<{ companyName: string }> {
+  return request('/account')
+}
+
+export function updateAccount(companyName: string): Promise<{ companyName: string }> {
+  return request('/account', { method: 'POST', body: JSON.stringify({ companyName }) })
 }
 
 export function askProperty(propertyId: string, question: string): Promise<{ answer: string }> {

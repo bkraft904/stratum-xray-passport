@@ -35,8 +35,15 @@ export const handler = async (event) => {
     })
   );
 
+  const { Item: user } = await ddb.send(new GetCommand({ TableName: TABLES.users, Key: { email } }));
+  const companyName = user?.companyName || "";
+
   if (!scans || scans.length === 0) {
-    return json(200, { report: "No scans recorded for this property yet." }, headers);
+    return json(
+      200,
+      { report: "No scans recorded for this property yet.", companyName, address: property.address },
+      headers
+    );
   }
 
   const scanData = scans.map(({ scanId, createdAt, imageType, scopeNote, summary, findings, caveats }) => ({
@@ -57,5 +64,5 @@ export const handler = async (event) => {
 
   const report = response.content.find((block) => block.type === "text")?.text ?? "";
 
-  return json(200, { report, scanCount: scans.length }, headers);
+  return json(200, { report, scanCount: scans.length, companyName, address: property.address }, headers);
 };

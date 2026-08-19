@@ -552,6 +552,48 @@ Resources:
           Type: HttpApi
           Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/stripe/webhook", Method: POST }
 
+  VaultAccountGetFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-account-get/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref UsersTable }
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/account", Method: GET }
+
+  VaultAccountUpdateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-account-update/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+      Events:
+        Update:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/account", Method: POST }
+
   VaultSubscriptionCheckoutCreateFunction:
     Type: AWS::Serverless::Function
     Properties:
