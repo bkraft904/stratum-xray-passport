@@ -200,12 +200,49 @@ export interface AdminEvent {
   type: string
   email: string
   createdAt: string
+  view?: string
+  referrer?: string
+  visitorId?: string
 }
 
 export interface AdminStats {
   days: number
   counts: Record<string, number>
   events: AdminEvent[]
+}
+
+const VISITOR_ID_KEY = 'stratum_visitor_id'
+
+function getOrCreateVisitorId(): string {
+  try {
+    let id = localStorage.getItem(VISITOR_ID_KEY)
+    if (!id) {
+      id = crypto.randomUUID()
+      localStorage.setItem(VISITOR_ID_KEY, id)
+    }
+    return id
+  } catch {
+    return '' // localStorage unavailable (private browsing, etc.) — visits still count, just not as a unique
+  }
+}
+
+// Fire-and-forget by design: a dropped or failed pageview ping must never
+// surface an error or block anything the visitor is doing.
+export function trackPageView(view: string): void {
+  if (!VAULT_API_URL) return
+  const body = JSON.stringify({
+    view,
+    referrer: document.referrer || '',
+    visitorId: getOrCreateVisitorId(),
+  })
+  fetch(`${VAULT_API_URL}/track/pageview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    keepalive: true,
+  }).catch(() => {
+    /* analytics failures are silent, on purpose */
+  })
 }
 
 export function getAdminStats(days = 30): Promise<AdminStats> {

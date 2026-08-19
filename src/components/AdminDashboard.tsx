@@ -45,7 +45,17 @@ function buildDailySeries(events: AdminEvent[], days: number, match: (t: string)
   return Array.from(buckets.entries()).map(([date, count]) => ({ date, count }))
 }
 
-function Sparkline({ data, color, label }: { data: { date: string; count: number }[]; color: string; label: string }) {
+function Sparkline({
+  data,
+  color,
+  accentColor = color,
+  label,
+}: {
+  data: { date: string; count: number }[]
+  color: string
+  accentColor?: string
+  label: string
+}) {
   const width = 280
   const height = 64
   const padTop = 8
@@ -91,10 +101,10 @@ function Sparkline({ data, color, label }: { data: { date: string; count: number
           <line x1={x(hover)} y1={padTop} x2={x(hover)} y2={height} stroke={MUTED} strokeWidth={1} />
         ) : null}
         {n > 0 ? (
-          <circle cx={x(n - 1)} cy={y(data[n - 1].count)} r={5} fill={color} stroke={SURFACE} strokeWidth={2} />
+          <circle cx={x(n - 1)} cy={y(data[n - 1].count)} r={5} fill={accentColor} stroke={SURFACE} strokeWidth={2} />
         ) : null}
         {hover !== null ? (
-          <circle cx={x(hover)} cy={y(data[hover].count)} r={5} fill={color} stroke={SURFACE} strokeWidth={2} />
+          <circle cx={x(hover)} cy={y(data[hover].count)} r={5} fill={accentColor} stroke={SURFACE} strokeWidth={2} />
         ) : null}
       </svg>
       {hovered ? (
@@ -128,6 +138,16 @@ export function AdminDashboard() {
   const series = useMemo(() => {
     if (!stats) return []
     return SERIES.map((s) => ({ ...s, data: buildDailySeries(stats.events, days, s.match) }))
+  }, [stats, days])
+
+  const visits = useMemo(() => {
+    if (!stats) return { total: 0, uniqueVisitors: 0, data: [] as { date: string; count: number }[] }
+    const pageViews = stats.events.filter((e) => e.type === 'page_view')
+    return {
+      total: pageViews.length,
+      uniqueVisitors: new Set(pageViews.map((e) => e.visitorId).filter(Boolean)).size,
+      data: buildDailySeries(stats.events, days, (t) => t === 'page_view'),
+    }
   }, [stats, days])
 
   const topUsers = useMemo(() => {
@@ -185,6 +205,37 @@ export function AdminDashboard() {
         <CardShell className="p-5 text-sm text-fg-dim">No activity recorded in this range yet.</CardShell>
       ) : (
         <>
+          <CardShell className="p-5">
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <p className="text-xs text-fg-dim">Site visits</p>
+                <p className="font-display text-3xl text-fg">
+                  {visits.total.toLocaleString()}
+                  <span className="ml-2 text-sm font-normal text-fg-dim">{visits.uniqueVisitors.toLocaleString()} unique visitors</span>
+                </p>
+              </div>
+            </div>
+            <svg viewBox="0 0 560 48" className="w-full">
+              {(() => {
+                const width = 560
+                const height = 48
+                const max = Math.max(1, ...visits.data.map((d) => d.count))
+                const n = visits.data.length
+                const x = (i: number) => (n <= 1 ? 0 : (i / (n - 1)) * width)
+                const y = (v: number) => 4 + (1 - v / max) * (height - 4)
+                const line = visits.data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(d.count).toFixed(1)}`).join(' ')
+                const area = `${line} L ${x(n - 1).toFixed(1)} ${height} L 0 ${height} Z`
+                return (
+                  <>
+                    <path d={area} fill={MUTED} fillOpacity={0.08} stroke="none" />
+                    <path d={line} fill="none" stroke={MUTED} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                    {n > 0 ? <circle cx={x(n - 1)} cy={y(visits.data[n - 1].count)} r={5} fill="#2ee6ff" stroke={SURFACE} strokeWidth={2} /> : null}
+                  </>
+                )
+              })()}
+            </svg>
+          </CardShell>
+
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <CardShell className="p-4">
               <p className="text-xs text-fg-dim">Unique users</p>

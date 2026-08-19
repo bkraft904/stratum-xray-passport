@@ -62,6 +62,13 @@ Resources:
       DefaultRouteSettings:
         ThrottlingRateLimit: 5
         ThrottlingBurstLimit: 10
+      # Pageview tracking is unauthenticated too, but costs nothing beyond
+      # one DynamoDB write (no AI/email spend) — give it its own, higher
+      # budget so a traffic spike on the homepage can't throttle /analyze.
+      RouteSettings:
+        "POST /track/pageview":
+          ThrottlingRateLimit: 20
+          ThrottlingBurstLimit: 40
 
   AnalyzeFunction:
     Type: AWS::Serverless::Function
@@ -788,6 +795,26 @@ Resources:
         Stats:
           Type: HttpApi
           Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/admin/stats", Method: GET }
+
+  VaultTrackPageviewFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-track-pageview/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 10
+      MemorySize: 256
+      Environment:
+        Variables:
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          EVENTS_TABLE: !Ref EventsTable
+      Policies:
+        - DynamoDBWritePolicy: { TableName: !Ref EventsTable }
+      Events:
+        Track:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: "/track/pageview", Method: POST }
 
 Outputs:
   ApiUrl:

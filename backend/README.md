@@ -138,6 +138,7 @@ helper) via a Lambda Layer at `layers/vault-shared/`.
 | `/account` | GET | Bearer | `{ companyName }` for the signed-in account |
 | `/account` | POST | Bearer | `{ companyName }` → saves it, used as report letterhead |
 | `/admin/stats` | GET | Bearer, admin-only | `?days=30` → funnel event counts. 403 unless caller's email is in `AdminEmail` |
+| `/track/pageview` | POST | — | `{ view, referrer, visitorId }` → logs a pageview. No IP storage, no cookies; `visitorId` is a random id the frontend keeps in localStorage. Own throttle budget (`RouteSettings` on the HttpApi) so homepage traffic can't throttle `/analyze` |
 
 Authenticated routes expect `Authorization: Bearer <session JWT>`.
 

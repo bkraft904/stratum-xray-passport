@@ -1,4 +1,5 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
+import { trackPageView } from './lib/vaultApi'
 import { Nav } from './components/Nav'
 import { Hero } from './components/Hero'
 import { Problem } from './components/Problem'
@@ -24,8 +25,25 @@ const CheckoutResult = lazy(() =>
   import('./components/CheckoutResult').then((m) => ({ default: m.CheckoutResult }))
 )
 
+function currentView(params: URLSearchParams): string {
+  if (params.has('vault_view')) return 'public_property'
+  const checkout = params.get('vault_checkout')
+  if (checkout === 'success' || checkout === 'cancel') return `checkout_${checkout}`
+  if (params.has('vault_admin')) return 'admin_dashboard'
+  return 'home'
+}
+
 export default function App() {
   const params = new URLSearchParams(window.location.search)
+
+  // Fire once per load. Deliberately not the raw path/query string — those
+  // can carry one-time secrets (magic-link tokens, transfer tokens) that
+  // must never end up stored anywhere, so only this small fixed set of
+  // labels is ever sent.
+  useEffect(() => {
+    trackPageView(currentView(params))
+  }, [])
+
   const publicPropertyId = params.get('vault_view')
   if (publicPropertyId) {
     return (
