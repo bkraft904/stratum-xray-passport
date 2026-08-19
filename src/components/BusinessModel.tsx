@@ -1,51 +1,51 @@
 import { motion } from 'framer-motion'
-import { Check, HardHat, Home, Wrench } from 'lucide-react'
+import { Building2, Check, HardHat, Home } from 'lucide-react'
 import { Container, SectionHeading, Button, Badge } from './ui'
 
 const TIERS = [
   {
-    icon: HardHat,
-    name: 'Contractors',
-    price: 'From $450',
-    period: '/ project',
-    tagline: 'Document once, hand off a finished passport',
+    icon: Home,
+    name: 'Homeowners',
+    price: '$49',
+    period: 'one-time / property',
+    tagline: 'First scan free — pay only once you know it’s worth keeping',
     features: [
-      'On-site capture app for your crew',
-      'AI-assisted diagramming + QA review',
-      'Branded handoff to your client',
-      'Volume pricing for repeat builders',
+      'Full X-ray record for one property',
+      'Unlimited scans after unlocking',
+      'Transfers free when you sell',
+      'Export or share a public link anytime',
     ],
-    cta: 'Start a project',
+    cta: 'Start a property',
     highlight: false,
   },
   {
-    icon: Home,
-    name: 'Owners',
-    price: '$19',
+    icon: HardHat,
+    name: 'Contractors — Crew',
+    price: '$99',
     period: '/ month',
-    tagline: 'A transferable passport for the life of the property',
+    tagline: 'For a small crew running scans across many jobs',
     features: [
-      'Full X-ray record, always up to date',
-      'Warranty, permit & inspection tracking',
-      'Grant & revoke trade access anytime',
-      'Passport transfers free at sale',
+      'Unlimited properties',
+      '100 scans included per month',
+      'No per-property unlock fee',
+      'Cancel anytime',
     ],
-    cta: 'Get early access',
+    cta: 'Subscribe',
     highlight: true,
   },
   {
-    icon: Wrench,
-    name: 'Trade Pros',
-    price: 'Pay per',
-    period: 'access grant',
-    tagline: 'Skip the exploratory demo, see it before you quote',
+    icon: Building2,
+    name: 'Contractors — Company',
+    price: '$249',
+    period: '/ month',
+    tagline: 'For larger operations running scans daily',
     features: [
-      'Owner-approved access per job',
-      'Behind-the-wall view before you arrive',
-      'Log your own work back to the record',
-      'For plumbers, electricians & restoration',
+      'Unlimited properties',
+      'Unlimited scans',
+      'No per-property unlock fee',
+      'Cancel anytime',
     ],
-    cta: 'Join as a pro',
+    cta: 'Subscribe',
     highlight: false,
   },
 ]
@@ -57,7 +57,7 @@ export function BusinessModel() {
         <SectionHeading
           eyebrow="Business model"
           title="Aligned with everyone who touches the building"
-          description="Contractors pay once, at the moment the value is created. Owners subscribe for a record that only appreciates. Trade pros pay for permissioned access instead of a blind estimate."
+          description="Homeowners pay once, per property, only after the first free scan proves the value. Contractors running scans across many jobs subscribe instead — a monthly plan with no per-property fee. A Solo plan ($39/mo, 20 scans) is also available inside Vault for individual contractors."
           align="center"
         />
 
@@ -101,7 +101,7 @@ export function BusinessModel() {
               <Button
                 variant={highlight ? 'primary' : 'secondary'}
                 className="mt-7 w-full"
-                onClick={() => document.getElementById('cta')?.scrollIntoView({ behavior: 'smooth' })}
+                onClick={() => document.getElementById('vault')?.scrollIntoView({ behavior: 'smooth' })}
               >
                 {cta}
               </Button>
@@ -110,15 +110,14 @@ export function BusinessModel() {
         </div>
 
         <p className="mx-auto mt-6 max-w-lg text-center text-[12px] text-fg-faint">
-          Illustrative pricing — finalized during our pilot program.
+          Live pricing — sign in to Stratum Vault above to start a property or subscribe.
         </p>
 
         <div className="mx-auto mt-14 flex max-w-2xl flex-col items-center gap-3 rounded-2xl border border-hair bg-surface/40 px-8 py-7 text-center">
           <Badge tone="amber">Pilot phase</Badge>
           <p className="text-[14px] leading-relaxed text-fg-dim">
-            We're building the first Building Passports by hand — working directly with a small group of local
-            contractors before the software scales further. If you've got a project breaking ground or opening
-            walls, we'd like to document it.
+            We're working with an early group of homeowners and contractors while the product takes shape. If
+            you've got a project breaking ground or opening walls, we'd like to document it.
           </p>
         </div>
       </Container>
