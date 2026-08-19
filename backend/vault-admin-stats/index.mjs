@@ -27,10 +27,13 @@ export const handler = async (event) => {
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
   const counts = {};
+  const events = [];
   let ExclusiveStartKey;
   // Scan + filter is fine at this stage's event volume; revisit with a
   // type+createdAt GSI if this table ever grows large enough for a full
-  // scan to matter.
+  // scan to matter. Raw events (not just counts) are returned so the
+  // frontend can build a daily trend and a per-user breakdown without a
+  // separate endpoint for each slice.
   do {
     const { Items, LastEvaluatedKey } = await ddb.send(
       new ScanCommand({
@@ -42,9 +45,12 @@ export const handler = async (event) => {
     );
     for (const item of Items || []) {
       counts[item.type] = (counts[item.type] || 0) + 1;
+      events.push({ type: item.type, email: item.email, createdAt: item.createdAt });
     }
     ExclusiveStartKey = LastEvaluatedKey;
   } while (ExclusiveStartKey);
 
-  return json(200, { days, counts }, headers);
+  events.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+
+  return json(200, { days, counts, events }, headers);
 };

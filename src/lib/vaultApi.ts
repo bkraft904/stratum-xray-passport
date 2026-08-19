@@ -184,9 +184,16 @@ export function openBillingPortal(): Promise<{ url: string }> {
   return request('/subscription/portal', { method: 'POST' })
 }
 
+export interface AdminEvent {
+  type: string
+  email: string
+  createdAt: string
+}
+
 export interface AdminStats {
   days: number
   counts: Record<string, number>
+  events: AdminEvent[]
 }
 
 export function getAdminStats(days = 30): Promise<AdminStats> {
