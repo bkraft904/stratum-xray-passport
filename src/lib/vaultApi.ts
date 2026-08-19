@@ -78,6 +78,18 @@ export function verifySignInToken(token: string): Promise<{ session: string; ema
   return request(`/auth/verify?token=${encodeURIComponent(token)}`)
 }
 
+export function registerAccount(email: string, password: string): Promise<{ message: string }> {
+  return request('/auth/register', { method: 'POST', body: JSON.stringify({ email, password }) })
+}
+
+export function login(email: string, password: string): Promise<{ session: string; email: string }> {
+  return request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+}
+
+export function setPassword(newPassword: string): Promise<{ message: string }> {
+  return request('/account/password', { method: 'POST', body: JSON.stringify({ newPassword }) })
+}
+
 export function listProperties(): Promise<{ properties: Property[] }> {
   return request('/properties')
 }

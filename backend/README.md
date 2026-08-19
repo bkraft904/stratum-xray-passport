@@ -120,7 +120,10 @@ helper) via a Lambda Layer at `layers/vault-shared/`.
 | Route | Method | Auth | Purpose |
 |---|---|---|---|
 | `/auth/request-link` | POST | — | `{ email }` → emails a 15-minute sign-in link |
-| `/auth/verify` | GET | — | `?token=` → returns a 30-day session JWT |
+| `/auth/verify` | GET | — | `?token=` → returns a 30-day session JWT. Also activates a pending password if the token came from `/auth/register` |
+| `/auth/register` | POST | — | `{ email, password }` (password ≥ 8 chars) → emails a verification link that activates the account |
+| `/auth/login` | POST | — | `{ email, password }` → session JWT, same shape as `/auth/verify` |
+| `/account/password` | POST | Bearer | `{ newPassword }` → sets/changes the caller's password. Doubles as the "forgot password" flow: sign in via the email link, then set a new one here |
 | `/properties` | POST | Bearer | `{ address }` → creates a property |
 | `/properties` | GET | Bearer | Lists the caller's properties |
 | `/properties/{id}` | GET | Bearer | Property + every scan recorded against it |

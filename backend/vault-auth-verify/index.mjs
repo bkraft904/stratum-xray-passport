@@ -39,6 +39,20 @@ export const handler = async (event) => {
     if (err.name !== "ConditionalCheckFailedException") throw err;
   });
 
+  // Registration flow attaches a pending password hash to the token —
+  // clicking the verification link both proves email ownership and
+  // activates the password in one step.
+  if (record.pendingPasswordHash) {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLES.users,
+        Key: { email: record.email },
+        UpdateExpression: "SET passwordHash = :hash",
+        ExpressionAttributeValues: { ":hash": record.pendingPasswordHash },
+      })
+    );
+  }
+
   await trackEvent("sign_in_completed", { email: record.email });
 
   const session = signSession(record.email);

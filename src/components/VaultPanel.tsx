@@ -23,6 +23,9 @@ import {
   isVaultConfigured,
   requestSignInLink,
   verifySignInToken,
+  registerAccount,
+  login,
+  setPassword as apiSetPassword,
   listProperties,
   createProperty,
   getProperty,
@@ -68,11 +71,17 @@ const SUBSCRIPTION_TIERS: { tier: SubscriptionTier; name: string; priceDollars: 
 
 export function VaultPanel() {
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [authMode, setAuthMode] = useState<'signin' | 'register' | 'magiclink'>('signin')
+  const [registerSent, setRegisterSent] = useState(false)
   const [signedInEmail, setSignedInEmail] = useState<string | null>(null)
   const [verifying, setVerifying] = useState(false)
   const [linkSent, setLinkSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [passwordSaved, setPasswordSaved] = useState(false)
 
   const [properties, setProperties] = useState<Property[]>([])
   const [newAddress, setNewAddress] = useState('')
@@ -163,6 +172,47 @@ export function VaultPanel() {
       .finally(() => setBusy(false))
   }
 
+  function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setBusy(true)
+    login(email, password)
+      .then(({ session, email: signedEmail }) => {
+        setSession(session, signedEmail)
+        setSignedInEmail(signedEmail)
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Could not sign in.'))
+      .finally(() => setBusy(false))
+  }
+
+  function handleRegister(e: React.FormEvent) {
+    e.preventDefault()
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+    setError(null)
+    setBusy(true)
+    registerAccount(email, password)
+      .then(() => setRegisterSent(true))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Could not create account.'))
+      .finally(() => setBusy(false))
+  }
+
+  function handleSetPassword(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setPasswordSaved(false)
+    setBusy(true)
+    apiSetPassword(newPassword)
+      .then(() => {
+        setPasswordSaved(true)
+        setNewPassword('')
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Could not update password.'))
+      .finally(() => setBusy(false))
+  }
+
   function handleSignOut() {
     clearSession()
     setSignedInEmail(null)
@@ -170,7 +220,10 @@ export function VaultPanel() {
     setProperties([])
     setSubscription(null)
     setLinkSent(false)
+    setRegisterSent(false)
     setEmail('')
+    setPassword('')
+    setConfirmPassword('')
   }
 
   function handleSubscribe(tier: SubscriptionTier) {
@@ -410,14 +463,105 @@ export function VaultPanel() {
           <CardShell className="p-8 text-center text-fg-dim">Signing you in…</CardShell>
         ) : !signedInEmail ? (
           <CardShell className="max-w-md p-8">
-            {linkSent ? (
-              <div className="flex flex-col items-center gap-3 text-center">
-                <Check className="text-green" size={28} />
-                <p className="text-fg">Check your email for a sign-in link.</p>
-                <p className="text-sm text-fg-dim">It expires in 15 minutes — check spam if it doesn't show up in a minute.</p>
+            {authMode !== 'magiclink' ? (
+              <div className="mb-5 flex gap-1 rounded-lg border border-hair-strong bg-surface-2 p-1">
+                <button
+                  type="button"
+                  onClick={() => setAuthMode('signin')}
+                  className={`flex-1 rounded-md py-2 text-sm transition-colors ${authMode === 'signin' ? 'bg-cyan/15 text-cyan-soft' : 'text-fg-dim hover:text-fg'}`}
+                >
+                  Sign in
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthMode('register')}
+                  className={`flex-1 rounded-md py-2 text-sm transition-colors ${authMode === 'register' ? 'bg-cyan/15 text-cyan-soft' : 'text-fg-dim hover:text-fg'}`}
+                >
+                  Create account
+                </button>
               </div>
+            ) : null}
+
+            {authMode === 'magiclink' ? (
+              linkSent ? (
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <Check className="text-green" size={28} />
+                  <p className="text-fg">Check your email for a sign-in link.</p>
+                  <p className="text-sm text-fg-dim">It expires in 15 minutes — check spam if it doesn't show up in a minute.</p>
+                </div>
+              ) : (
+                <form onSubmit={handleRequestLink} className="flex flex-col gap-4">
+                  <label className="flex items-center gap-2 text-sm text-fg-dim">
+                    <Mail size={16} /> Email address
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="rounded-lg border border-hair-strong bg-surface-2 px-4 py-3 text-fg outline-none focus:border-cyan/50"
+                  />
+                  <Button type="submit" variant="primary" className="w-full">
+                    <Send size={16} /> {busy ? 'Sending…' : 'Send sign-in link'}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setAuthMode('signin')}
+                    className="text-center text-xs text-fg-dim hover:text-fg"
+                  >
+                    Use a password instead
+                  </button>
+                </form>
+              )
+            ) : authMode === 'register' ? (
+              registerSent ? (
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <Check className="text-green" size={28} />
+                  <p className="text-fg">Check your email to verify your account.</p>
+                  <p className="text-sm text-fg-dim">It expires in 15 minutes — check spam if it doesn't show up in a minute.</p>
+                </div>
+              ) : (
+                <form onSubmit={handleRegister} className="flex flex-col gap-4">
+                  <label className="flex items-center gap-2 text-sm text-fg-dim">
+                    <Mail size={16} /> Email address
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="rounded-lg border border-hair-strong bg-surface-2 px-4 py-3 text-fg outline-none focus:border-cyan/50"
+                  />
+                  <label className="flex items-center gap-2 text-sm text-fg-dim">
+                    <Lock size={16} /> Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                    className="rounded-lg border border-hair-strong bg-surface-2 px-4 py-3 text-fg outline-none focus:border-cyan/50"
+                  />
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm password"
+                    className="rounded-lg border border-hair-strong bg-surface-2 px-4 py-3 text-fg outline-none focus:border-cyan/50"
+                  />
+                  <Button type="submit" variant="primary" className="w-full">
+                    <UserPlus size={16} /> {busy ? 'Creating…' : 'Create account'}
+                  </Button>
+                </form>
+              )
             ) : (
-              <form onSubmit={handleRequestLink} className="flex flex-col gap-4">
+              <form onSubmit={handleLogin} className="flex flex-col gap-4">
                 <label className="flex items-center gap-2 text-sm text-fg-dim">
                   <Mail size={16} /> Email address
                 </label>
@@ -429,9 +573,27 @@ export function VaultPanel() {
                   placeholder="you@example.com"
                   className="rounded-lg border border-hair-strong bg-surface-2 px-4 py-3 text-fg outline-none focus:border-cyan/50"
                 />
+                <label className="flex items-center gap-2 text-sm text-fg-dim">
+                  <Lock size={16} /> Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="rounded-lg border border-hair-strong bg-surface-2 px-4 py-3 text-fg outline-none focus:border-cyan/50"
+                />
                 <Button type="submit" variant="primary" className="w-full">
-                  <Send size={16} /> {busy ? 'Sending…' : 'Send sign-in link'}
+                  <Send size={16} /> {busy ? 'Signing in…' : 'Sign in'}
                 </Button>
+                <button
+                  type="button"
+                  onClick={() => setAuthMode('magiclink')}
+                  className="text-center text-xs text-fg-dim hover:text-fg"
+                >
+                  Forgot your password? Use an email link instead
+                </button>
               </form>
             )}
           </CardShell>
@@ -512,6 +674,31 @@ export function VaultPanel() {
                   <Button variant="secondary" onClick={handleSaveCompanyName}>
                     {busy ? 'Saving…' : 'Save'}
                   </Button>
+                </CardShell>
+
+                <CardShell className="p-4">
+                  <form onSubmit={handleSetPassword} className="flex flex-wrap items-center gap-3">
+                    <label className="text-xs text-fg-dim">
+                      <Lock size={12} className="mr-1 inline" />
+                      Set/change password
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      minLength={8}
+                      value={newPassword}
+                      onChange={(e) => {
+                        setNewPassword(e.target.value)
+                        setPasswordSaved(false)
+                      }}
+                      placeholder="At least 8 characters"
+                      className="min-w-0 flex-1 rounded-lg border border-hair-strong bg-surface-2 px-3 py-2 text-sm text-fg outline-none focus:border-cyan/50"
+                    />
+                    <Button type="submit" variant="secondary">
+                      {busy ? 'Saving…' : 'Save'}
+                    </Button>
+                    {passwordSaved ? <span className="text-xs text-green">Password updated.</span> : null}
+                  </form>
                 </CardShell>
 
                 <form onSubmit={handleCreateProperty} className="flex gap-3">

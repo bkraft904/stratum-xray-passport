@@ -226,6 +226,80 @@ Resources:
           Type: HttpApi
           Properties: { ApiId: !Ref ScanLabHttpApi, Path: /auth/request-link, Method: POST }
 
+  VaultAuthRegisterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-auth-register/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          LOGIN_TOKENS_TABLE: !Ref LoginTokensTable
+          FROM_EMAIL: !Ref FromEmail
+          APP_URL: !Ref AppUrl
+          EVENTS_TABLE: !Ref EventsTable
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBWritePolicy: { TableName: !Ref LoginTokensTable }
+        - DynamoDBWritePolicy: { TableName: !Ref EventsTable }
+        - Statement:
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource: "*"
+      Events:
+        Register:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: /auth/register, Method: POST }
+
+  VaultAuthLoginFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-auth-login/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+          EVENTS_TABLE: !Ref EventsTable
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBWritePolicy: { TableName: !Ref EventsTable }
+      Events:
+        Login:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: /auth/login, Method: POST }
+
+  VaultAccountPasswordFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: vault-account-password/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures: [arm64]
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USERS_TABLE: !Ref UsersTable
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+      Events:
+        SetPassword:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ScanLabHttpApi, Path: /account/password, Method: POST }
+
   VaultAuthVerifyFunction:
     Type: AWS::Serverless::Function
     Properties:
